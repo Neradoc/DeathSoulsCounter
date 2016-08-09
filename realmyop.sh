@@ -8,7 +8,8 @@ mkdir -p $DIR/imgs/crops
 mkdir -p $DIR/imgs/frames
 mkdir -p $DIR/imgs/mask
 mkdir -p $DIR/imgs/reds
-
+mkdir -p $DIR/imgs/maskx
+mkdir -p $DIR/imgs/redx
 mkdir -p $DIR/found
 
 # convertir les videos en segments
@@ -57,25 +58,37 @@ for segment in $DIR/segments/*.mp4; do
 		convert "$DIR/imgs/reds/$NAME" -fill Black -fuzz 25% +opaque Red "$DIR/imgs/reds/$NAME"
 
 		# - compter le nombre de pixels
-		RESULT=`convert "$DIR/imgs/reds/$NAME" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
-
-		# Si l'écran est rouge:
-		# - faire un masque pour la zone autour des mots "YOU ARE DEAD"
-		# - comparer le taux de rouge à celui de la zone des mots
-		# (il doit en effet y avoir un masque noir autour des mots)
+		PIXELON=`convert "$DIR/imgs/reds/$NAME" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
 		
 		printf "."
 		
 		# - comparer à un seuil
 		# Si c'est bon
-		if ((RESULT > 2500)); then
-			printf ".\n"
-			echo "___________________________________________________"
-			echo "$RESULT in $NAME from $segment"
-			# - copier l'image d'origine dans le dossier des morts trouvées
-			cp "$file" "$DIR/found/$NAME"
-			# - sauter quelques images (5-10 secondes)
-			((skip = 2*FPS))
+		if ((PIXELON > 2500)); then
+
+			# Tester si tout l'écran est rouge:
+			# - faire un masque pour la zone autour des mots "YOU DIED"
+			composite -compose Multiply "$DIR/imgs/crops/$NAME" "mask-on.png" "$DIR/imgs/maskx/$NAME"
+			# - appliquer un seuil pour ne garder que les pixels "assez rouges"
+			convert "$DIR/imgs/maskx/$NAME" -modulate 100,500 "$DIR/imgs/redx/$NAME"
+			convert "$DIR/imgs/redx/$NAME" -fill Black -fuzz 25% +opaque Red "$DIR/imgs/redx/$NAME"
+
+			# - compter le nombre de pixels
+			PIXELOFF=`convert "$DIR/imgs/redx/$NAME" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
+		
+			# - comparer le taux de rouge à celui de la zone des mots
+			# (il doit en effet y avoir un masque noir autour des mots)
+			if ((PIXELOFF > 2500)); then
+				cp "$file" "$DIR/false/$NAME"
+			else
+				printf ".\n"
+				echo "___________________________________________________"
+				echo "$PIXELON in $NAME from $segment"
+				# - copier l'image d'origine dans le dossier des morts trouvées
+				cp "$file" "$DIR/found/$NAME"
+				# - sauter quelques images (5-10 secondes)
+				((skip = 2*FPS))
+			fi
 		fi
 	done
 done
