@@ -12,17 +12,23 @@ mkdir -p $DIR/imgs/reds
 mkdir -p $DIR/found
 
 # convertir les videos en segments
-## ffmpeg -i videos/darksouls2.mp4 -map 0 -c copy -f segment -segment_time 120 -reset_timestamps 1 segments/vid_2_%02d.mp4
+## ffmpeg -i videos/darksouls2.mp4 -map 0 -c copy -f segment -segment_time 120 -reset_timestamps 1 segments/vid_2_%08d.mp4
 
 # Extraire des images de la vidéo. Par exemple 2 images par seconde.
 vid=0
 skip=0
+startat=5
 for segment in $DIR/segments/*.mp4; do
 	vid=$((vid+1))
+	if ((vid < startat)); then
+		continue
+	fi
 	# supprimer les fichiers du dossier d'images
 	rm -rf $DIR/imgs/*/*.png
 	# créer les images de ce segment
 	ffmpeg -i "$segment" -vf fps=$FPS "$DIR/imgs/frames/out_${vid}_%08d.png"
+	
+	echo "============ $segment ============"
 	
 	for file in $DIR/imgs/frames/*; do
 		# skipper les frames à skipper
@@ -40,7 +46,7 @@ for segment in $DIR/segments/*.mp4; do
 	
 		# - appliquer un masque pour ne garder que la zone du texte
 		# $ composite -compose Multiply out67c.png mask-off.png out67m.png
-		composite -compose Multiply "$DIR/imgs/crops/$NAME" "$DIR/mask-off.png" "$DIR/imgs/mask/$NAME"
+		composite -compose Multiply "$DIR/imgs/crops/$NAME" "mask-off.png" "$DIR/imgs/mask/$NAME"
 
 		# - appliquer un seuil pour ne garder que les pixels "assez rouges"
 		# - augmenter la saturation
@@ -53,17 +59,19 @@ for segment in $DIR/segments/*.mp4; do
 		# - compter le nombre de pixels
 		RESULT=`convert "$DIR/imgs/reds/$NAME" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
 
-		# - comparer à un seuil
-		echo "___________________________________________________"
-		echo "$RESULT --> "$((RESULT>5000))" <-- $NAME"
-		
 		# Si l'écran est rouge:
 		# - faire un masque pour la zone autour des mots "YOU ARE DEAD"
 		# - comparer le taux de rouge à celui de la zone des mots
 		# (il doit en effet y avoir un masque noir autour des mots)
 		
+		printf "."
+		
+		# - comparer à un seuil
 		# Si c'est bon
 		if ((RESULT > 2500)); then
+			printf ".\n"
+			echo "___________________________________________________"
+			echo "$RESULT in $NAME from $segment"
 			# - copier l'image d'origine dans le dossier des morts trouvées
 			cp "$file" "$DIR/found/$NAME"
 			# - sauter quelques images (5-10 secondes)
