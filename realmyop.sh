@@ -29,19 +29,17 @@ for segment in $DIR/segments/vid${videoNum}_*.mp4; do
 	fi
 	# supprimer les fichiers du dossier d'images
 	rm -rf $DIR/imgs/*
-	mkdir -p $DIR/imgs
 	mkdir -p $DIR/imgs/crops
 	mkdir -p $DIR/imgs/frames
 	mkdir -p $DIR/imgs/mask
 	mkdir -p $DIR/imgs/reds
 	mkdir -p $DIR/imgs/maskx
 	mkdir -p $DIR/imgs/redx
-	mkdir -p $DIR/found
 	# créer les images de ce segment
 	nvid=`printf "%04d" $vid`
 	ffmpeg -i "$segment" -vf fps=$FPS "$DIR/imgs/frames/death_${videoNum}_${nvid}_%04d.png"
 	
-	echo "============ "`basename $segment`" ||||| ($nvid) ============"
+	echo "============ "`basename $segment`" || ($vid) ============"
 	
 	for file in $DIR/imgs/frames/*; do
 		# skipper les frames à skipper
