@@ -1,5 +1,6 @@
 #!/bin/sh
 
+MASKDIR="."
 DIR="/Users/spyro/_exclus_de_timemachine/realmyop"
 FPS=5
 
@@ -16,20 +17,30 @@ mkdir -p $DIR/found
 ## ffmpeg -i videos/darksouls2.mp4 -map 0 -c copy -f segment -segment_time 120 -reset_timestamps 1 segments/vid_2_%08d.mp4
 
 # Extraire des images de la vidéo. Par exemple 2 images par seconde.
-vid=0
+vid=135
 skip=0
-startat=5
+startat=174
+# $((4+134))
 for segment in $DIR/segments/*.mp4; do
 	vid=$((vid+1))
 	if ((vid < startat)); then
 		continue
 	fi
 	# supprimer les fichiers du dossier d'images
-	rm -rf $DIR/imgs/*/*.png
+	rm -rf $DIR/imgs/*
+	mkdir -p $DIR/imgs
+	mkdir -p $DIR/imgs/crops
+	mkdir -p $DIR/imgs/frames
+	mkdir -p $DIR/imgs/mask
+	mkdir -p $DIR/imgs/reds
+	mkdir -p $DIR/imgs/maskx
+	mkdir -p $DIR/imgs/redx
+	mkdir -p $DIR/found
 	# créer les images de ce segment
-	ffmpeg -i "$segment" -vf fps=$FPS "$DIR/imgs/frames/out_${vid}_%08d.png"
+	nvid=`printf "%04d" $vid`
+	ffmpeg -i "$segment" -vf fps=$FPS "$DIR/imgs/frames/out_${nvid}_%08d.png"
 	
-	echo "============ $segment ============"
+	echo "============ "`basename $segment`" ||||| ($nvid) ============"
 	
 	for file in $DIR/imgs/frames/*; do
 		# skipper les frames à skipper
@@ -39,7 +50,7 @@ for segment in $DIR/segments/*.mp4; do
 		fi
 		
 		NAME=`basename $file`
-		# Sur chaque image rechercher le texte "YOU ARE DEAD"
+		# Sur chaque image rechercher le texte "YOU DIED"
 		# - croper la zone de l'écran qui doit le contenir
 		# x/y: 342x274 w/h: 420x90
 		# $ convert imgs/frames/out$x.png -crop 420x90+342+274 imgs/crops/out$x.png
@@ -47,7 +58,7 @@ for segment in $DIR/segments/*.mp4; do
 	
 		# - appliquer un masque pour ne garder que la zone du texte
 		# $ composite -compose Multiply out67c.png mask-off.png out67m.png
-		composite -compose Multiply "$DIR/imgs/crops/$NAME" "mask-off.png" "$DIR/imgs/mask/$NAME"
+		composite -compose Multiply "$DIR/imgs/crops/$NAME" "$MASKDIR/mask-off.png" "$DIR/imgs/mask/$NAME"
 
 		# - appliquer un seuil pour ne garder que les pixels "assez rouges"
 		# - augmenter la saturation
@@ -64,11 +75,11 @@ for segment in $DIR/segments/*.mp4; do
 		
 		# - comparer à un seuil
 		# Si c'est bon
-		if ((PIXELON > 2500)); then
+		if ((PIXELON > 2300)); then
 
 			# Tester si tout l'écran est rouge:
 			# - faire un masque pour la zone autour des mots "YOU DIED"
-			composite -compose Multiply "$DIR/imgs/crops/$NAME" "mask-on.png" "$DIR/imgs/maskx/$NAME"
+			composite -compose Multiply "$DIR/imgs/crops/$NAME" "$MASKDIR/mask-on.png" "$DIR/imgs/maskx/$NAME"
 			# - appliquer un seuil pour ne garder que les pixels "assez rouges"
 			convert "$DIR/imgs/maskx/$NAME" -modulate 100,500 "$DIR/imgs/redx/$NAME"
 			convert "$DIR/imgs/redx/$NAME" -fill Black -fuzz 25% +opaque Red "$DIR/imgs/redx/$NAME"
@@ -84,6 +95,7 @@ for segment in $DIR/segments/*.mp4; do
 				printf ".\n"
 				echo "___________________________________________________"
 				echo "$PIXELON in $NAME from $segment"
+				echo "$PIXELON in $NAME from $segment" >> "$DIR/found_liste.txt"
 				# - copier l'image d'origine dans le dossier des morts trouvées
 				cp "$file" "$DIR/found/$NAME"
 				# - sauter quelques images (5-10 secondes)
