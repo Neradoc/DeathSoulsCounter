@@ -17,13 +17,13 @@ mkdir -p $DIR/found
 ## ffmpeg -i videos/darksouls2.mp4 -map 0 -c copy -f segment -segment_time 120 -reset_timestamps 1 segments/vid_2_%08d.mp4
 
 # Extraire des images de la vidéo. Par exemple 2 images par seconde.
-vid=135
+vid=280
+startat=0
+skipatstart=((startat+vid))
 skip=0
-startat=174
-# $((4+134))
 for segment in $DIR/segments/*.mp4; do
 	vid=$((vid+1))
-	if ((vid < startat)); then
+	if ((vid < skipatstart)); then
 		continue
 	fi
 	# supprimer les fichiers du dossier d'images
