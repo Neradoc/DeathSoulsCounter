@@ -15,11 +15,11 @@ mkdir -p $DIR/found
 
 # convertir les videos en segments
 ## ffmpeg -i videos/darksouls2.mp4 -map 0 -c copy -f segment -segment_time 60 -reset_timestamps 1 segments/vid_02_%08d.mp4
-## ffmpeg -i segments/vid_03_00000015.mp4 -vf fps=5 imgs/frames/death_03_0015_%04d.png
+## ffmpeg -i videos/darksouls3.mp4 -map 0 -c copy -f segment -segment_time 60 -reset_timestamps 1 segments/vid_03_%08d.mp4
 
 # Extraire des images de la vidéo. Par exemple 2 images par seconde.
 # résolution
-res=360
+res=720
 MASKDIR="$res"
 if ((res == 720)); then
 	# nb dans le masque: 12801
@@ -29,14 +29,14 @@ if ((res == 720)); then
 fi
 if ((res == 360)); then
 	# nb dans le masque: 3741
-	MINPIXELON=1500
+	MINPIXELON=800
 	# nb dans le masque: 6435
-	MAXPIXELOFF=2000
+	MAXPIXELOFF=1000
 fi
 # numéro de la vidéo (%02d)
-videoNum="03"
+videoNum="04"
 # passer combien de vidéos au début
-startat=9
+startat=5
 # etc.
 vid=0
 skip=0
@@ -96,6 +96,9 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 		PIXELON=`convert "$DIR/imgs/reds/$NAME" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
 		
 		printf "."
+		if ((PIXELON > 0)); then
+			printf "%04d" $PIXELON
+		fi
 		
 		# - comparer à un seuil
 		# Si c'est bon
