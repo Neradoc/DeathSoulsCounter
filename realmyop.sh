@@ -15,6 +15,7 @@ mkdir -p $DIR/found
 
 # convertir les videos en segments
 ## ffmpeg -i videos/darksouls2.mp4 -map 0 -c copy -f segment -segment_time 60 -reset_timestamps 1 segments/vid_02_%08d.mp4
+## ffmpeg -i segments/vid_03_00000015.mp4 -vf fps=5 imgs/frames/death_03_0015_%04d.png
 
 # Extraire des images de la vidéo. Par exemple 2 images par seconde.
 # résolution
@@ -35,15 +36,16 @@ fi
 # numéro de la vidéo (%02d)
 videoNum="03"
 # passer combien de vidéos au début
-startat=0
+startat=9
 # etc.
 vid=0
 skip=0
 for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 	vid=$((vid+1))
-	if ((vid < startat)); then
+	if ((vid < startat+1)); then
 		continue
 	fi
+	timestamp=`date +%s`
 	# supprimer les fichiers du dossier d'images
 	rm -rf $DIR/imgs/*
 	mkdir -p $DIR/imgs/crops
@@ -56,7 +58,8 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 	nvid=`printf "%04d" $((vid-1))`
 	ffmpeg -i "$segment" -vf fps=$FPS "$DIR/imgs/frames/death_${videoNum}_${nvid}_%04d.png"
 	
-	echo "============ "`basename $segment`" || ($vid) ============"
+	echo "============ "`basename $segment`" || ($nvid) ============"
+	echo "============ "`date`
 	
 	for file in $DIR/imgs/frames/*; do
 		# skipper les frames à skipper
@@ -123,5 +126,7 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 				((skip = 2*FPS))
 			fi
 		fi
+		endtimes=`date +%s`
 	done
+	echo "\n============ "$((endtimes-timestamp))" s ============"
 done
