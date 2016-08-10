@@ -1,8 +1,6 @@
 #!/bin/sh
 
-MASKDIR="."
-DIR="/Users/spyro/_exclus_de_timemachine/realmyop"
-FPS=5
+source header.sh
 
 mkdir -p $DIR/imgs
 mkdir -p $DIR/imgs/crops
