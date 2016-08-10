@@ -14,14 +14,15 @@ mkdir -p $DIR/imgs/redx
 mkdir -p $DIR/found
 
 # convertir les videos en segments
-## ffmpeg -i videos/darksouls2.mp4 -map 0 -c copy -f segment -segment_time 120 -reset_timestamps 1 segments/vid_2_%08d.mp4
+## ffmpeg -i videos/darksouls2.mp4 -map 0 -c copy -f segment -segment_time 60 -reset_timestamps 1 segments/vid_2_%08d.mp4
 
 # Extraire des images de la vidéo. Par exemple 2 images par seconde.
-vid=280
+videoNum="03"
+vid=0
 startat=0
 skipatstart=((startat+vid))
 skip=0
-for segment in $DIR/segments/*.mp4; do
+for segment in $DIR/segments/vid${videoNum}_*.mp4; do
 	vid=$((vid+1))
 	if ((vid < skipatstart)); then
 		continue
@@ -38,7 +39,7 @@ for segment in $DIR/segments/*.mp4; do
 	mkdir -p $DIR/found
 	# créer les images de ce segment
 	nvid=`printf "%04d" $vid`
-	ffmpeg -i "$segment" -vf fps=$FPS "$DIR/imgs/frames/out_${nvid}_%08d.png"
+	ffmpeg -i "$segment" -vf fps=$FPS "$DIR/imgs/frames/death_${videoNum}_${nvid}_%04d.png"
 	
 	echo "============ "`basename $segment`" ||||| ($nvid) ============"
 	
