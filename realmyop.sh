@@ -2,6 +2,14 @@
 
 source header.sh
 
+if [[! -z $1 ]]; then
+	DIR="$1"
+fi
+if (($1 == "-")); then
+	DIR="$1"
+fi
+echo "UTILISATION DE $DIR"
+
 mkdir -p $DIR/imgs
 mkdir -p $DIR/imgs/crops
 mkdir -p $DIR/imgs/frames
@@ -17,7 +25,17 @@ mkdir -p $DIR/found
 
 # Extraire des images de la vidéo. Par exemple 2 images par seconde.
 # résolution
-res=720
+case $2 in
+	360 )
+		res=360
+		;;
+	720 )
+		res=720
+		;;
+	* )
+		res=720
+		;;
+esac
 MASKDIR="$res"
 if ((res == 720)); then
 	# nb dans le masque: 12801
