@@ -13,17 +13,29 @@ if [[ -z $res ]]; then res=720; fi
 
 # résolution
 MASKDIR="$res"
-if ((res == 720)); then
+if [ "$res" = "360" ]; then
+	# cropage
+	cropDims="212x48+171+134"
+	# nb dans le masque: 3741
+	MINPIXELON=800
+	# nb dans le masque: 6435
+	MAXPIXELOFF=1000
+fi
+if [ "$res" = "720" ]; then
+	# cropage
+	cropDims="420x90+342+274"
 	# nb dans le masque: 12801
-	MINPIXELON=2000
+	MINPIXELON=2300
 	# nb dans le masque: 24999
 	MAXPIXELOFF=2500
 fi
-if ((res == 360)); then
-	# nb dans le masque: 3741
-	MINPIXELON=700
-	# nb dans le masque: 6435
-	MAXPIXELOFF=500
+if [ "$res" = "720fr" ]; then
+	#cropage
+	cropDims="694x84+204+284"
+	# nb dans le masque: 12801
+	MINPIXELON=2300
+	# nb dans le masque: 24999
+	MAXPIXELOFF=2500
 fi
 
 timestamp=`date +%s`
@@ -33,12 +45,7 @@ NAME=`basename $file`
 # - croper la zone de l'écran qui doit le contenir
 # x/y: 342x274 w/h: 420x90
 # $ convert imgs/frames/out$x.png -crop 420x90+342+274 imgs/crops/out$x.png
-if ((res == 360)); then
-	convert "$file" -crop 212x48+171+134 "${file}.crop.png"
-fi
-if ((res == 720)); then
-	convert "$file" -crop 420x90+342+274 "${file}.crop.png"
-fi
+convert "$file" -crop $cropDims "${file}.crop.png"
 
 # - appliquer un masque pour ne garder que la zone du texte
 # $ composite -compose Multiply out67c.png mask-off.png out67m.png
@@ -55,7 +62,7 @@ convert "${file}.red.png" -fill Black -fuzz 25% +opaque Red "${file}.red.png"
 # - compter le nombre de pixels
 PIXELON=`convert "${file}.red.png" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
 
-printf "PIXELON : %4d  " $PIXELON
+printf "PIXELON : %6d  " $PIXELON
 
 # Tester si tout l'écran est rouge:
 # - faire un masque pour la zone autour des mots "YOU DIED"
@@ -67,7 +74,7 @@ convert "${file}.redx.png" -fill Black -fuzz 25% +opaque Red "${file}.redx.png"
 # - compter le nombre de pixels
 PIXELOFF=`convert "${file}.redx.png" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
 
-printf "PIXELOFF: %4d  " $PIXELOFF
+printf "PIXELOFF: %6d  " $PIXELOFF
 
 # - comparer le taux de rouge à celui de la zone des mots
 # (il doit en effet y avoir un masque noir autour des mots)
