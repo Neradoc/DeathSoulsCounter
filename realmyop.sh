@@ -25,6 +25,7 @@ mkdir -p $DIR/found
 
 # Extraire des images de la vidéo. Par exemple 2 images par seconde.
 # résolution
+
 case $2 in
 	360 )
 		res=360
@@ -32,22 +33,37 @@ case $2 in
 	720 )
 		res=720
 		;;
+	720fr )
+		res=720fr
+		;;
 	* )
 		res=720
 		;;
 esac
 MASKDIR="$res"
-if ((res == 720)); then
+if ["$res" = "360"]; then
+	# cropage
+	cropDims="212x48+171+134"
+	# nb dans le masque: 3741
+	MINPIXELON=800
+	# nb dans le masque: 6435
+	MAXPIXELOFF=1000
+fi
+if ["$res" == "720"]; then
+	# cropage
+	cropDims="420x90+342+274"
 	# nb dans le masque: 12801
 	MINPIXELON=2300
 	# nb dans le masque: 24999
 	MAXPIXELOFF=2500
 fi
-if ((res == 360)); then
-	# nb dans le masque: 3741
-	MINPIXELON=800
-	# nb dans le masque: 6435
-	MAXPIXELOFF=1000
+if ["$res" == "720fr"]; then
+	#cropage
+	cropDims="694x84+204+284"
+	# nb dans le masque: 12801
+	MINPIXELON=2300
+	# nb dans le masque: 24999
+	MAXPIXELOFF=2500
 fi
 # numéro de la vidéo (%02d)
 videoNum="04"
@@ -70,7 +86,7 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 	mkdir -p $DIR/imgs/reds
 	mkdir -p $DIR/imgs/maskx
 	mkdir -p $DIR/imgs/redx
-	# créer les images de ce segment
+	# créer les images de ce segment -ss -t
 	nvid=`printf "%04d" $((vid-1))`
 	ffmpeg -i "$segment" -vf fps=$FPS "$DIR/imgs/frames/death_${videoNum}_${nvid}_%04d.png"
 	
@@ -89,12 +105,7 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 		# - croper la zone de l'écran qui doit le contenir
 		# x/y: 342x274 w/h: 420x90
 		# $ convert imgs/frames/out$x.png -crop 420x90+342+274 imgs/crops/out$x.png
-		if ((res == 360)); then
-			convert "$file" -crop 212x48+171+134 "$DIR/imgs/crops/$NAME"
-		fi
-		if ((res == 720)); then
-			convert "$file" -crop 420x90+342+274 "$DIR/imgs/crops/$NAME"
-		fi
+		convert "$file" -crop $cropDims "$DIR/imgs/crops/$NAME"
 	
 		# - appliquer un masque pour ne garder que la zone du texte
 		# $ composite -compose Multiply out67c.png mask-off.png out67m.png
