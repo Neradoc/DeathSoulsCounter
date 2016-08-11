@@ -1,6 +1,6 @@
 #!/bin/sh
 
-DIR="/Users/spyro/_exclus_de_timemachine/realmyop"
+DIR="_data"
 FPS=5
 # résolution
 res=720

@@ -2,7 +2,7 @@
 
 import glob
 
-data_dir = "/Users/spyro/_exclus_de_timemachine/realmyop/"
+data_dir = "_data/"
 video_files = glob.glob(data_dir+"videos/*")
 
 print(video_files)

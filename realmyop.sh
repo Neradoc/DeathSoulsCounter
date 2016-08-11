@@ -10,13 +10,15 @@ if [[ "$1" = "-" ]]; then
 fi
 echo "UTILISATION DE $DIR"
 
-mkdir -p $DIR/imgs
-mkdir -p $DIR/imgs/crops
-mkdir -p $DIR/imgs/frames
-mkdir -p $DIR/imgs/mask
-mkdir -p $DIR/imgs/reds
-mkdir -p $DIR/imgs/maskx
-mkdir -p $DIR/imgs/redx
+IMGDIR="imgs"
+
+mkdir -p $DIR/$IMGDIR
+mkdir -p $DIR/$IMGDIR/crops
+mkdir -p $DIR/$IMGDIR/frames
+mkdir -p $DIR/$IMGDIR/mask
+mkdir -p $DIR/$IMGDIR/reds
+mkdir -p $DIR/$IMGDIR/maskx
+mkdir -p $DIR/$IMGDIR/redx
 mkdir -p $DIR/found
 
 # convertir les videos en segments
@@ -66,9 +68,9 @@ if [ "$res" = "720fr" ]; then
 	MAXPIXELOFF=2500
 fi
 # numéro de la vidéo (%02d)
-videoNum="05"
+videoNum="06"
 # passer combien de vidéos au début
-startat=5
+startat=0
 # etc.
 vid=0
 skip=0
@@ -79,21 +81,21 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 	fi
 	timestamp=`date +%s`
 	# supprimer les fichiers du dossier d'images
-	rm -rf $DIR/imgs/*
-	mkdir -p $DIR/imgs/crops
-	mkdir -p $DIR/imgs/frames
-	mkdir -p $DIR/imgs/mask
-	mkdir -p $DIR/imgs/reds
-	mkdir -p $DIR/imgs/maskx
-	mkdir -p $DIR/imgs/redx
+	rm -rf $DIR/$IMGDIR/*
+	mkdir -p $DIR/$IMGDIR/crops
+	mkdir -p $DIR/$IMGDIR/frames
+	mkdir -p $DIR/$IMGDIR/mask
+	mkdir -p $DIR/$IMGDIR/reds
+	mkdir -p $DIR/$IMGDIR/maskx
+	mkdir -p $DIR/$IMGDIR/redx
 	# créer les images de ce segment -ss -t
 	nvid=`printf "%04d" $((vid-1))`
-	ffmpeg -i "$segment" -vf fps=$FPS "$DIR/imgs/frames/death_${videoNum}_${nvid}_%04d.png"
+	ffmpeg -i "$segment" -vf fps=$FPS "$DIR/$IMGDIR/frames/death_${videoNum}_${nvid}_%04d.png"
 	
 	echo "============ "`basename $segment`" || ($nvid) ============"
 	echo "============ "`date`
 	
-	for file in $DIR/imgs/frames/*; do
+	for file in $DIR/$IMGDIR/frames/*; do
 		# skipper les frames à skipper
 		if ((skip > 0)); then
 			((skip -= 1))
@@ -104,8 +106,8 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 		# Sur chaque image rechercher le texte "YOU DIED"
 		# - croper la zone de l'écran qui doit le contenir
 		# x/y: 342x274 w/h: 420x90
-		# $ convert imgs/frames/out$x.png -crop 420x90+342+274 imgs/crops/out$x.png
-		convert "$file" -crop $cropDims "$DIR/imgs/crops/$NAME"
+		# $ convert $IMGDIR/frames/out$x.png -crop 420x90+342+274 $IMGDIR/crops/out$x.png
+		convert "$file" -crop $cropDims "$DIR/$IMGDIR/crops/$NAME"
 	
 		# - appliquer un masque pour ne garder que la zone du texte
 		# $ composite -compose Multiply out67c.png mask-off.png out67m.png
@@ -116,7 +118,7 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 		# $ convert out67s.png -fill Black -fuzz 25% +opaque Red out67fr.png
 		# - compter le nombre de pixels
 		
-		PIXELON=`convert -compose Multiply "$MASKDIR/mask-off.png" "$DIR/imgs/crops/$NAME" -composite -modulate 100,500 -fill Black -fuzz 25% +opaque Red \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
+		PIXELON=`convert -compose Multiply "$MASKDIR/mask-off.png" "$DIR/$IMGDIR/crops/$NAME" -composite -modulate 100,500 -fill Black -fuzz 25% +opaque Red \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
 		
 		printf "."
 		if ((PIXELON > 0)); then
@@ -131,7 +133,7 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 			# - faire un masque pour la zone autour des mots "YOU DIED"
 			# - appliquer un seuil pour ne garder que les pixels "assez rouges"
 			# - compter le nombre de pixels
-			PIXELOFF=`convert -compose Multiply "$MASKDIR/mask-on.png" "$DIR/imgs/crops/$NAME" -composite -modulate 100,500 -fill Black -fuzz 25% +opaque Red \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
+			PIXELOFF=`convert -compose Multiply "$MASKDIR/mask-on.png" "$DIR/$IMGDIR/crops/$NAME" -composite -modulate 100,500 -fill Black -fuzz 25% +opaque Red \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
 		
 			# - comparer le taux de rouge à celui de la zone des mots
 			# (il doit en effet y avoir un masque noir autour des mots)

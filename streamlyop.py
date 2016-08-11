@@ -15,7 +15,7 @@ DEBUG = False
 START_TIME = time.time()
 deltaT = 0
 
-print("livestreamer twitch.tv/realmyop2 source -o _streams_/stream.mpg")
+print("livestreamer twitch.tv/realmyop2 source -o _streams/stream.mpg")
 
 res = "720fr"
 
