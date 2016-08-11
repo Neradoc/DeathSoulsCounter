@@ -3,12 +3,12 @@
 import subprocess,re,time,glob,os,shutil
 from multiprocessing import Process, Queue, Pool
 
-DIR = "_streams_/"
+DIR = "_streams/"
 VID = "stream.mpg"
 EXT = "png"
 timeStep = 5
 fps = 5
-MAXPROCESS = 4
+MAXPROCESS = 1
 nProcess = 0
 DELETE = True
 DEBUG = False
@@ -162,7 +162,7 @@ def analyse_video(queue,advance,deltaT):
 	
 	# calculs de temps et diagnostics
 	temps_total = "%0.2f" % (time.time() - temps_debut)
-	speedup = "%0.2f" % ( (advance + timeStep) / (time.time() - START_TIME))
+	speedup = "%0.2f" % ( timeStep / (time.time() - temps_debut))
 	pctOn = "%0.1f" % ( 100 * nPixon/len(images) )
 	#
 	out_print += "    -- dT: "+( "%0.1f" %(deltaT) )+" Acc:"+speedup+" Total: "+temps_total+" ON: "+pctOn+"% \n"
