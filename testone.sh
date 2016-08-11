@@ -49,30 +49,33 @@ convert "$file" -crop $cropDims "${file}.crop.png"
 
 # - appliquer un masque pour ne garder que la zone du texte
 # $ composite -compose Multiply out67c.png mask-off.png out67m.png
-composite -compose Multiply "${file}.crop.png" "$MASKDIR/mask-off.png" "${file}.mask.png"
+#DEBUG: composite -compose Multiply "${file}.crop.png" "$MASKDIR/mask-off.png" "${file}.mask.png"
 
 # - appliquer un seuil pour ne garder que les pixels "assez rouges"
 # - augmenter la saturation
 # $ convert out67c.png -modulate 100,500 out67s.png
 # - remplir de noir les couleurs pas proches du rouge
 # $ convert out67s.png -fill Black -fuzz 25% +opaque Red out67fr.png
-convert "${file}.mask.png" -modulate 100,500 "${file}.red.png"
-convert "${file}.red.png" -fill Black -fuzz 25% +opaque Red "${file}.red.png"
+#DEBUG: convert "${file}.mask.png" -modulate 100,500 "${file}.red.png"
+#DEBUG: convert "${file}.red.png" -fill Black -fuzz 25% +opaque Red "${file}.red.png"
 
 # - compter le nombre de pixels
-PIXELON=`convert "${file}.red.png" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
+#DEBUG: PIXELON=`convert "${file}.red.png" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
+
+PIXELON=`convert -compose Multiply "$MASKDIR/mask-off.png" "${file}.crop.png" -composite -modulate 100,500 -fill Black -fuzz 25% +opaque Red \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
 
 printf "PIXELON : %6d  " $PIXELON
 
 # Tester si tout l'écran est rouge:
 # - faire un masque pour la zone autour des mots "YOU DIED"
-composite -compose Multiply "${file}.crop.png" "$MASKDIR/mask-on.png" "${file}.maskx.png"
+#DEBUG: composite -compose Multiply "${file}.crop.png" "$MASKDIR/mask-on.png" "${file}.maskx.png"
 # - appliquer un seuil pour ne garder que les pixels "assez rouges"
-convert "${file}.maskx.png" -modulate 100,500 "${file}.redx.png"
-convert "${file}.redx.png" -fill Black -fuzz 25% +opaque Red "${file}.redx.png"
+#DEBUG: convert "${file}.maskx.png" -modulate 100,500 "${file}.redx.png"
+#DEBUG: convert "${file}.redx.png" -fill Black -fuzz 25% +opaque Red "${file}.redx.png"
 
 # - compter le nombre de pixels
-PIXELOFF=`convert "${file}.redx.png" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
+#DEBUG: PIXELOFF=`convert "${file}.redx.png" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
+PIXELOFF=`convert -compose Multiply "$MASKDIR/mask-on.png" "${file}.crop.png" -composite -modulate 100,500 -fill Black -fuzz 25% +opaque Red \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
 
 printf "PIXELOFF: %6d  " $PIXELOFF
 
