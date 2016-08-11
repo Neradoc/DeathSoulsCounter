@@ -13,6 +13,7 @@ nProcess = 0
 DELETE = True
 DEBUG = False
 START_TIME = time.time()
+deltaT = 0
 
 print("livestreamer twitch.tv/realmyop2 source -o _streams_/stream.mpg")
 
@@ -111,7 +112,7 @@ def analyse_image(fichierImage, dossierFound):
 #####################################################################
 #####################################################################
 
-def analyse_video(queue,advance):
+def analyse_video(queue,advance,deltaT):
 	# diagnostics
 	nPixon = 0
 	temps_debut = time.time()
@@ -132,11 +133,12 @@ def analyse_video(queue,advance):
 	subprocess.call(command, stdout=FNULL, stderr=FNULL)
 	
 	# on crée les images dans le dossier img en les taggant avec advance
-	command = ["ffmpeg", "-y", "-i", DIR+"ivid/stream-"+p_advance+".mpg", "-vf", "fps="+str(fps), DIR+"img/death_"+p_advance+"_%04d.jpg"]
+	command = ["ffmpeg", "-y", "-i", DIR+"ivid/stream-"+p_advance+".mpg", "-vf", "fps="+str(fps), "-q:v", "1", DIR+"img/death_"+p_advance+"_%04d.jpg"]
 	subprocess.call(command, stdout=FNULL, stderr=FNULL)
 	
 	temps_ffmpeg = "%0.2f" % (time.time() - temps_debut)
-	out_print += "P"+p_advance+" TIME FF: "+temps_ffmpeg+"\n"
+	if DEBUG:
+		out_print += "    -- TIME FF: "+temps_ffmpeg+"\n"
 	
 	# pour chaque image
 	images = list(filter(
@@ -148,8 +150,9 @@ def analyse_video(queue,advance):
 		# faire tout le boulot sur les images
 		(isPixon) = analyse_image(image,DIR+"/found/")
 		if isPixon: nPixon += 1
-
-	out_print += "P"+p_advance+" N images: %d ON: %d\n" % (len(images),nPixon)
+	
+	if DEBUG:
+		out_print += "    -- N images: %d ON: %d\n" % (len(images),nPixon)
 	
 	# rm
 	if DELETE:
@@ -160,8 +163,10 @@ def analyse_video(queue,advance):
 	# calculs de temps et diagnostics
 	temps_total = "%0.2f" % (time.time() - temps_debut)
 	speedup = "%0.2f" % ( (advance + timeStep) / (time.time() - START_TIME))
-	out_print += "P"+p_advance+" FINISH "+t_advance+" Total: "+temps_total+" Acc: "+speedup+"x\n"
-	print(out_print)
+	pctOn = "%0.1f" % ( 100 * nPixon/len(images) )
+	#
+	out_print += "    -- dT: "+( "%0.1f" %(deltaT) )+" Acc:"+speedup+" Total: "+temps_total+" ON: "+pctOn+"% \n"
+	print("P"+p_advance+" FINISHED\n"+out_print)
 	queue.put(advance)
 
 #####################################################################
@@ -184,15 +189,17 @@ if __name__ == '__main__':
 	
 		if duration < advance + timeStep:
 			time.sleep(0.01)
+			deltaT += 0.01
 			continue
 	
 		if nProcess < MAXPROCESS:
 			nProcess += 1
 			# ICI on lance un thread (ou un process)
 			#analyse_video(queue,str(advance))
-			p = Process(target=analyse_video, args=(queue,advance,))
+			p = Process(target=analyse_video, args=(queue,advance,deltaT,))
 			p.start()
 			advance += timeStep
+			deltaT = 0
 		else:
 			#print("TOO MANY PROCESS : %d" %(nProcess))
 			pass
