@@ -2,10 +2,10 @@
 
 source header.sh
 
-if [[! -z $1 ]]; then
+if [[ ! -z $1 ]]; then
 	DIR="$1"
 fi
-if (($1 == "-")); then
+if [[ "$1" = "-" ]]; then
 	DIR="$1"
 fi
 echo "UTILISATION DE $DIR"
@@ -41,7 +41,7 @@ case $2 in
 		;;
 esac
 MASKDIR="$res"
-if ["$res" = "360"]; then
+if [ "$res" = "360" ]; then
 	# cropage
 	cropDims="212x48+171+134"
 	# nb dans le masque: 3741
@@ -49,7 +49,7 @@ if ["$res" = "360"]; then
 	# nb dans le masque: 6435
 	MAXPIXELOFF=1000
 fi
-if ["$res" == "720"]; then
+if [ "$res" = "720" ]; then
 	# cropage
 	cropDims="420x90+342+274"
 	# nb dans le masque: 12801
@@ -57,7 +57,7 @@ if ["$res" == "720"]; then
 	# nb dans le masque: 24999
 	MAXPIXELOFF=2500
 fi
-if ["$res" == "720fr"]; then
+if [ "$res" = "720fr" ]; then
 	#cropage
 	cropDims="694x84+204+284"
 	# nb dans le masque: 12801
@@ -66,7 +66,7 @@ if ["$res" == "720fr"]; then
 	MAXPIXELOFF=2500
 fi
 # numéro de la vidéo (%02d)
-videoNum="04"
+videoNum="05"
 # passer combien de vidéos au début
 startat=5
 # etc.
@@ -109,18 +109,14 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 	
 		# - appliquer un masque pour ne garder que la zone du texte
 		# $ composite -compose Multiply out67c.png mask-off.png out67m.png
-		composite -compose Multiply "$DIR/imgs/crops/$NAME" "$MASKDIR/mask-off.png" "$DIR/imgs/mask/$NAME"
-
 		# - appliquer un seuil pour ne garder que les pixels "assez rouges"
 		# - augmenter la saturation
 		# $ convert out67c.png -modulate 100,500 out67s.png
 		# - remplir de noir les couleurs pas proches du rouge
 		# $ convert out67s.png -fill Black -fuzz 25% +opaque Red out67fr.png
-		convert "$DIR/imgs/mask/$NAME" -modulate 100,500 "$DIR/imgs/reds/$NAME"
-		convert "$DIR/imgs/reds/$NAME" -fill Black -fuzz 25% +opaque Red "$DIR/imgs/reds/$NAME"
-
 		# - compter le nombre de pixels
-		PIXELON=`convert "$DIR/imgs/reds/$NAME" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
+		
+		PIXELON=`convert -compose Multiply "$MASKDIR/mask-off.png" "$DIR/imgs/crops/$NAME" -composite -modulate 100,500 -fill Black -fuzz 25% +opaque Red \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
 		
 		printf "."
 		if ((PIXELON > 0)); then
@@ -133,13 +129,9 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 
 			# Tester si tout l'écran est rouge:
 			# - faire un masque pour la zone autour des mots "YOU DIED"
-			composite -compose Multiply "$DIR/imgs/crops/$NAME" "$MASKDIR/mask-on.png" "$DIR/imgs/maskx/$NAME"
 			# - appliquer un seuil pour ne garder que les pixels "assez rouges"
-			convert "$DIR/imgs/maskx/$NAME" -modulate 100,500 "$DIR/imgs/redx/$NAME"
-			convert "$DIR/imgs/redx/$NAME" -fill Black -fuzz 25% +opaque Red "$DIR/imgs/redx/$NAME"
-
 			# - compter le nombre de pixels
-			PIXELOFF=`convert "$DIR/imgs/redx/$NAME" \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
+			PIXELOFF=`convert -compose Multiply "$MASKDIR/mask-on.png" "$DIR/imgs/crops/$NAME" -composite -modulate 100,500 -fill Black -fuzz 25% +opaque Red \( +clone -evaluate set 0 \) -metric AE -compare -format "%[distortion]" info:`
 		
 			# - comparer le taux de rouge à celui de la zone des mots
 			# (il doit en effet y avoir un masque noir autour des mots)
