@@ -3,17 +3,18 @@
 import subprocess,re,time,glob,os,shutil
 from multiprocessing import Process, Queue, Pool
 
-DIR = "tests/"
+DIR = "_streams_/"
 VID = "stream.mpg"
 EXT = "png"
-timeStep = 8
-skipFrames = 0
+timeStep = 5
 fps = 5
-MAXPROCESS = 1
+MAXPROCESS = 4
 nProcess = 0
-DELETE = False
+DELETE = True
+DEBUG = False
+START_TIME = time.time()
 
-print("livestreamer twitch.tv/realmyop2 source -o tests/stream.mpg")
+print("livestreamer twitch.tv/realmyop2 source -o _streams_/stream.mpg")
 
 res = "720fr"
 
@@ -57,27 +58,43 @@ def analyse_image(fichierImage, dossierFound):
 	com = ["convert", fichierImage, "-crop", cropDims, fichierImage+".c."+EXT]
 	subprocess.call(com)
 	
-	# appliquer le masque
-	com = ["composite", "-compose", "Multiply", fichierImage+".c."+EXT, MASKOFF, fichierImage+".m."+EXT]
-	subprocess.call(com)
-	# appliquer les seuils
-	com = ["convert", fichierImage+".m."+EXT, "-modulate", "100,500", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red", fichierImage+".r."+EXT]
-	subprocess.call(com)
-	# calculer les pixels
-	tPIXELON = subprocess.check_output(["convert", fichierImage+".r."+EXT, "(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
+	# appliquer le masque, appliquer les seuils, calculer les pixels
+	tPIXELON = subprocess.check_output(["convert",
+		"-compose", "Multiply", MASKOFF, fichierImage+".c."+EXT, "-composite",
+		"-modulate", "100,500", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red",
+		"(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
+
+	if DEBUG:
+		# appliquer le masque
+		com = ["composite", "-compose", "Multiply", fichierImage+".c."+EXT, MASKOFF, fichierImage+".m."+EXT]
+		subprocess.call(com)
+		# appliquer les seuils
+		com = ["convert", fichierImage+".m."+EXT, "-modulate", "100,500", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red", fichierImage+".r."+EXT]
+		subprocess.call(com)
+		# calculer les pixels
+		tPIXELON = subprocess.check_output(["convert", fichierImage+".r."+EXT, "(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
+
 	PIXELON = int(tPIXELON)
 	
 	if PIXELON > MINPIXELON:
-		# appliquer le masque
-		com = ["composite", "-compose", "Multiply", fichierImage+".c."+EXT, MASKON, fichierImage+".n."+EXT]
-		subprocess.call(com)
-		# appliquer les seuils
-		com = ["convert", fichierImage+".n."+EXT, "-modulate", "100,500", fichierImage+".q."+EXT]
-		subprocess.call(com)
-		com = ["convert", fichierImage+".q."+EXT, "-fill", "Black", "-fuzz", "25%", "+opaque", "Red", fichierImage+".q."+EXT]
-		subprocess.call(com)
-		# calculer les pixels
-		tPIXELOFF = subprocess.check_output(["convert", fichierImage+".q."+EXT, "(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
+		# appliquer le masque, appliquer les seuils, calculer les pixels
+		tPIXELOFF = subprocess.check_output(["convert",
+			"-compose", "Multiply", MASKON, fichierImage+".c."+EXT, "-composite",
+			"-modulate", "100,500", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red",
+			"(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
+		
+		if DEBUG:
+			# appliquer le masque
+			com = ["composite", "-compose", "Multiply", fichierImage+".c."+EXT, MASKON, fichierImage+".n."+EXT]
+			subprocess.call(com)
+			# appliquer les seuils
+			com = ["convert", fichierImage+".n."+EXT, "-modulate", "100,500", fichierImage+".q."+EXT]
+			subprocess.call(com)
+			com = ["convert", fichierImage+".q."+EXT, "-fill", "Black", "-fuzz", "25%", "+opaque", "Red", fichierImage+".q."+EXT]
+			subprocess.call(com)
+			# calculer les pixels
+			tPIXELOFF = subprocess.check_output(["convert", fichierImage+".q."+EXT, "(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
+
 		PIXELOFF = int(tPIXELOFF)
 	
 		#print("%s: %6d /%6d" % (nomImage, PIXELON, PIXELOFF))
@@ -99,31 +116,32 @@ def analyse_video(queue,advance):
 	nPixon = 0
 	temps_debut = time.time()
 	#
-	print("-"*80)
-	print("START  "+advance)
-	t_advance = "%04d" % (int(advance))
+	t_advance = str(advance)
+	p_advance = "%05d" % (advance)
+	out_print = ""
+	print("P"+p_advance+" START")
 	#
 	FNULL = open(os.devnull, 'w')
 	#ffmpeg -i "$DIR/stream.mp4" -ss "$advance" -t "$timeStep" -vf fps=5 "$DIR/img/death_$advance_%04d.png"
-	###command = ["ffmpeg", "-i", DIR+VID, "-ss", advance, "-t", str(timeStep), "-vf", "fps="+str(fps), DIR+"/img/death_"+t_advance+"_%04d.jpg"]
+	###command = ["ffmpeg", "-i", DIR+VID, "-ss", advance, "-t", str(timeStep), "-vf", "fps="+str(fps), DIR+"/img/death_"+p_advance+"_%04d.jpg"]
 	###subprocess.call(command, stdout=FNULL, stderr=FNULL)
 
 	# on découpe la section de la vidéo correspondant (sans réencodage, sans le son)
 	# -ss AVANT le -i change la façon dont ça marche (fast seek avant, lent après)
-	command = ["ffmpeg", "-y", "-ss", advance, "-i", DIR+VID, "-an", "-t", str(timeStep), DIR+"ivid/stream-"+t_advance+".mpg"]
+	command = ["ffmpeg", "-y", "-ss", t_advance, "-i", DIR+VID, "-an", "-t", str(timeStep), DIR+"ivid/stream-"+p_advance+".mpg"]
 	subprocess.call(command, stdout=FNULL, stderr=FNULL)
 	
 	# on crée les images dans le dossier img en les taggant avec advance
-	command = ["ffmpeg", "-y", "-i", DIR+"ivid/stream-"+t_advance+".mpg", "-vf", "fps="+str(fps), DIR+"img/death_"+t_advance+"_%04d.jpg"]
+	command = ["ffmpeg", "-y", "-i", DIR+"ivid/stream-"+p_advance+".mpg", "-vf", "fps="+str(fps), DIR+"img/death_"+p_advance+"_%04d.jpg"]
 	subprocess.call(command, stdout=FNULL, stderr=FNULL)
 	
 	temps_ffmpeg = "%0.2f" % (time.time() - temps_debut)
-	print("TIME FF: "+temps_ffmpeg)
+	out_print += "P"+p_advance+" TIME FF: "+temps_ffmpeg+"\n"
 	
 	# pour chaque image
 	images = list(filter(
 		lambda x: not re.search("jpg\..*\.png",x), 
-		glob.glob(DIR+"/img/death_"+t_advance+"_*.jpg")
+		glob.glob(DIR+"/img/death_"+p_advance+"_*.jpg")
 	))
 	
 	for image in images:
@@ -131,16 +149,19 @@ def analyse_video(queue,advance):
 		(isPixon) = analyse_image(image,DIR+"/found/")
 		if isPixon: nPixon += 1
 
-	print("N images: %d ON: %d" % (len(images),nPixon))
+	out_print += "P"+p_advance+" N images: %d ON: %d\n" % (len(images),nPixon)
 	
-	## rm DIR+"/img/death_"+advance+"_"*
+	# rm
 	if DELETE:
-		os.remove(DIR+"ivid/stream-"+t_advance+".mpg")
+		os.remove(DIR+"ivid/stream-"+p_advance+".mpg")
 		for image in images:
  			os.remove(image)
 	
+	# calculs de temps et diagnostics
 	temps_total = "%0.2f" % (time.time() - temps_debut)
-	print("FINISH "+advance+" Total: "+temps_total)
+	speedup = "%0.2f" % ( (advance + timeStep) / (time.time() - START_TIME))
+	out_print += "P"+p_advance+" FINISH "+t_advance+" Total: "+temps_total+" Acc: "+speedup+"x\n"
+	print(out_print)
 	queue.put(advance)
 
 #####################################################################
@@ -162,14 +183,14 @@ if __name__ == '__main__':
 		duration = int(match.group(1))
 	
 		if duration < advance + timeStep:
-			time.sleep(0.1)
+			time.sleep(0.01)
 			continue
 	
 		if nProcess < MAXPROCESS:
 			nProcess += 1
 			# ICI on lance un thread (ou un process)
 			#analyse_video(queue,str(advance))
-			p = Process(target=analyse_video, args=(queue,str(advance),))
+			p = Process(target=analyse_video, args=(queue,advance,))
 			p.start()
 			advance += timeStep
 		else:
