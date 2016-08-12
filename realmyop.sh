@@ -2,33 +2,62 @@
 
 source header.sh
 
-if [[ ! -z $1 ]]; then
-	DIR="$1"
-fi
-if [[ "$1" = "-" ]]; then
-	DIR="$1"
+# passer combien de vidéos au début
+startAt=0
+# numéro du premier segment (pour coller aux numéros réels)
+vid=0
+
+while getopts ":s:" opt; do
+	case $opt in
+		s)
+			startAt="$OPTARG"
+			shift $((OPTIND-1))
+			;;
+		v)
+			vid="$OPTARG"
+			shift $((OPTIND-1))
+			;;
+		\?)
+			echo "Invalid option -$OPTARG" >&2
+			exit
+			;;
+		:)
+			echo "Option -$OPTARG requires an argument." >&2
+			exit
+			;;
+	esac
+done
+
+ARGUMENTSLIST='Arguments: [-s <startAt>] [-v <startVid>] <DIR> <videoNum> <res>'"\nstartAt: nombre de segments à sauter au début (pour relancer par ex)
+startVid: numéro du premier segment (si on en a supprimé 5, mettre 5)
+DIR: dossier racine des données (contient 'segments/' et 'found/')
+videoNum: numéro de la VOD
+res: résolution/format de masque (360, 720, 720fr)"
+
+
+# dossier utilisé
+if [[ ! -z "$1" ]]; then
+	if [[ "$1" = "-" ]]; then
+		DIR=$DIR_BASE
+	else
+		DIR="$1"
+	fi
+else
+	echo $ARGUMENTSLIST
+	exit
 fi
 echo "UTILISATION DE $DIR"
 
-IMGDIR="imgs"
+# numéro de la vidéo (%02d)
+if [[ ! -z "$2" ]]; then
+	videoNum="$2"
+else
+	echo $ARGUMENTSLIST
+	exit
+fi
 
-mkdir -p $DIR/$IMGDIR
-mkdir -p $DIR/$IMGDIR/crops
-mkdir -p $DIR/$IMGDIR/frames
-mkdir -p $DIR/$IMGDIR/mask
-mkdir -p $DIR/$IMGDIR/reds
-mkdir -p $DIR/$IMGDIR/maskx
-mkdir -p $DIR/$IMGDIR/redx
-mkdir -p $DIR/found
-
-# convertir les videos en segments
-## ffmpeg -i videos/darksouls2.mp4 -map 0 -c copy -f segment -segment_time 60 -reset_timestamps 1 segments/vid_02_%08d.mp4
-## ffmpeg -i videos/darksouls3.mp4 -map 0 -c copy -f segment -segment_time 60 -reset_timestamps 1 segments/vid_03_%08d.mp4
-
-# Extraire des images de la vidéo. Par exemple 2 images par seconde.
-# résolution
-
-case $2 in
+# format des images et masques
+case "$3" in
 	360 )
 		res=360
 		;;
@@ -39,9 +68,23 @@ case $2 in
 		res=720fr
 		;;
 	* )
-		res=720
+		echo $ARGUMENTSLIST
+		exit
 		;;
 esac
+
+# dossier des images
+IMGDIR="imgs"
+
+mkdir -p $DIR/$IMGDIR
+mkdir -p $DIR/$IMGDIR/crops
+mkdir -p $DIR/$IMGDIR/frames
+mkdir -p $DIR/found
+
+# convertir les videos en segments
+## ffmpeg -i videos/darksouls3.mp4 -map 0 -c copy -f segment -segment_time 60 -reset_timestamps 1 segments/vid_03_%08d.mp4
+
+# résolution
 MASKDIR="$res"
 if [ "$res" = "360" ]; then
 	# cropage
@@ -67,27 +110,21 @@ if [ "$res" = "720fr" ]; then
 	# nb dans le masque: 24999
 	MAXPIXELOFF=2500
 fi
-# numéro de la vidéo (%02d)
-videoNum="06"
-# passer combien de vidéos au début
-startat=0
 # etc.
-vid=0
+Folse=0
 skip=0
+echo "VIDEONUM $videoNum - START AT $startAt - VID $vid"
 for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 	vid=$((vid+1))
-	if ((vid < startat+1)); then
+	if ((vid < startAt+1)); then
 		continue
 	fi
 	timestamp=`date +%s`
 	# supprimer les fichiers du dossier d'images
-	rm -rf $DIR/$IMGDIR/*
-	mkdir -p $DIR/$IMGDIR/crops
-	mkdir -p $DIR/$IMGDIR/frames
-	mkdir -p $DIR/$IMGDIR/mask
-	mkdir -p $DIR/$IMGDIR/reds
-	mkdir -p $DIR/$IMGDIR/maskx
-	mkdir -p $DIR/$IMGDIR/redx
+	for del in $DIR/$IMGDIR/*/death_${videoNum}_*; do
+		rm "$del"
+	done
+	# Extraire des images de la vidéo. Par exemple 5 images par seconde.
 	# créer les images de ce segment -ss -t
 	nvid=`printf "%04d" $((vid-1))`
 	ffmpeg -i "$segment" -vf fps=$FPS "$DIR/$IMGDIR/frames/death_${videoNum}_${nvid}_%04d.png"
@@ -95,7 +132,7 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 	echo "============ "`basename $segment`" || ($nvid) ============"
 	echo "============ "`date`
 	
-	for file in $DIR/$IMGDIR/frames/*; do
+	for file in $DIR/$IMGDIR/frames/death_${videoNum}_${nvid}_*; do
 		# skipper les frames à skipper
 		if ((skip > 0)); then
 			((skip -= 1))
@@ -138,9 +175,9 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 			# - comparer le taux de rouge à celui de la zone des mots
 			# (il doit en effet y avoir un masque noir autour des mots)
 			if ((PIXELOFF > MAXPIXELOFF)); then
-				cp "$file" "$DIR/false/$NAME"
+				((Folse = Folse + 1))
 			else
-				printf ".\n"
+				printf "\n"
 				echo "___________________________________________________"
 				echo "$PIXELON in $NAME from $segment"
 				echo "$PIXELON in $NAME from $segment" >> "$DIR/found_liste.txt"

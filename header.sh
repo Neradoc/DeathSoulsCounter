@@ -1,6 +1,6 @@
 #!/bin/sh
 
-DIR="_data"
+DIR_BASE="_data"
 FPS=5
 # résolution
 res=720
