@@ -7,15 +7,13 @@ startAt=0
 # numéro du premier segment (pour coller aux numéros réels)
 vid=0
 
-while getopts ":s:" opt; do
+while getopts ":s:v:" opt; do
 	case $opt in
 		s)
 			startAt="$OPTARG"
-			shift $((OPTIND-1))
 			;;
 		v)
 			vid="$OPTARG"
-			shift $((OPTIND-1))
 			;;
 		\?)
 			echo "Invalid option -$OPTARG" >&2
@@ -27,13 +25,14 @@ while getopts ":s:" opt; do
 			;;
 	esac
 done
+shift $((OPTIND-1))
 
-ARGUMENTSLIST='Arguments: [-s <startAt>] [-v <startVid>] <DIR> <videoNum> <res>'"\nstartAt: nombre de segments à sauter au début (pour relancer par ex)
-startVid: numéro du premier segment (si on en a supprimé 5, mettre 5)
-DIR: dossier racine des données (contient 'segments/' et 'found/')
-videoNum: numéro de la VOD
+ARGUMENTSLIST='Arguments: [-s <startAt>] [-v <startVid>] <DIR> <videoNum> <res>'"\n
+startAt: nombre de segments à sauter au début (pour relancer par ex)\n
+startVid: numéro du premier segment (si on en a supprimé 5, mettre 5)\n
+DIR: dossier racine des données (contient 'segments/' et 'found/')\n
+videoNum: numéro de la VOD\n
 res: résolution/format de masque (360, 720, 720fr)"
-
 
 # dossier utilisé
 if [[ ! -z "$1" ]]; then
@@ -75,11 +74,14 @@ esac
 
 # dossier des images
 IMGDIR="imgs"
+FOUND="found"
+FOUND_TIMED="${FOUND}_0_timed"
 
 mkdir -p $DIR/$IMGDIR
 mkdir -p $DIR/$IMGDIR/crops
 mkdir -p $DIR/$IMGDIR/frames
-mkdir -p $DIR/found
+mkdir -p $DIR/$FOUND
+mkdir -p $DIR/$FOUND_TIMED
 
 # convertir les videos en segments
 ## ffmpeg -i videos/darksouls3.mp4 -map 0 -c copy -f segment -segment_time 60 -reset_timestamps 1 segments/vid_03_%08d.mp4
@@ -132,7 +134,9 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 	echo "============ "`basename $segment`" || ($nvid) ============"
 	echo "============ "`date`
 	
+	frameNum=-1
 	for file in $DIR/$IMGDIR/frames/death_${videoNum}_${nvid}_*; do
+		((frameNum = frameNum + 1))
 		# skipper les frames à skipper
 		if ((skip > 0)); then
 			((skip -= 1))
@@ -182,7 +186,13 @@ for segment in $DIR/segments/vid_${videoNum}_*.mp4; do
 				echo "$PIXELON in $NAME from $segment"
 				echo "$PIXELON in $NAME from $segment" >> "$DIR/found_liste.txt"
 				# - copier l'image d'origine dans le dossier des morts trouvées
-				cp "$file" "$DIR/found/$NAME"
+				cp "$file" "$DIR/$FOUND/$NAME"
+				# - le renommage
+				((minutes = (vid - 1 + frameNum/300) % 60))
+				((seconds = (frameNum/5) % 60))
+				((heures = (vid - 1 + frameNum/300) / 60))
+				fname=`printf "death_%s_%dh%02dm%02ds.png" "$videoNum" "$heures" "$minutes" "$seconds"`
+				cp "$file" "$DIR/$FOUND_TIMED/$fname"
 				# - sauter quelques images (5-10 secondes)
 				((skip = 2*FPS))
 			fi
