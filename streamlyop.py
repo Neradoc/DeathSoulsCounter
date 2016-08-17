@@ -1,107 +1,256 @@
 #!/usr/bin/env python
 
+import argparse,math
+import requests, hmac, hashlib
 import subprocess,re,time,glob,os,shutil
-from multiprocessing import Process, Queue, Pool
+from multiprocessing import Process, Queue, SimpleQueue, Pool
 
-DIR = "_streams/"
-VID = "stream.mpg"
-EXT = "png"
-timeStep = 5
-fps = 5
-MAXPROCESS = 1
-nProcess = 0
-DELETE = True
 DEBUG = False
-START_TIME = time.time()
-deltaT = 0
+DIAGNOS = False
 
-print("livestreamer twitch.tv/realmyop2 source -o _streams/stream.mpg")
+# le dossier où ça se passe
+DIR = "_streams/"
+# dossier des morts trouvées
+DIRFOUND = DIR+"found/"
+# dossier des morts réelles (après tri)
+DIRTRUE = DIR+"deaths/"
+# dossier des images temporaires
+DIRIMG = DIR+"img/"
+# dossier des segments temporaires
+DIRVID = DIR+"ivid/"
+# chemin de la vidéo source
+SOURCE = DIR+"stream.mpg"
 
-res = "720fr"
+def init_dirs():
+	global DIRFOUND,DIRTRUE,DIRIMG,DIRVID,SOURCE
+	DIRFOUND = DIR+"found/"
+	DIRTRUE = DIR+"deaths/"
+	DIRIMG = DIR+"img/"
+	DIRVID = DIR+"ivid/"
+	SOURCE = DIR+"stream.mpg"
 
-if res == "360":
-	# cropage
-	cropDims="212x48+171+134"
-	# nb dans le masque: 3741
-	MINPIXELON=800
-	# nb dans le masque: 6435
-	MAXPIXELOFF=1000
-	# masques
-	MASKON = "360/mask-on.png"
-	MASKOFF= "360/mask-off.png"
-elif res == "720":
-	# cropage
-	cropDims="420x90+342+274"
-	# nb dans le masque: 12801
-	MINPIXELON=2300
-	# nb dans le masque: 24999
-	MAXPIXELOFF=2500
-	# masques
-	MASKON = "720/mask-on.png"
-	MASKOFF= "720/mask-off.png"
-elif res == "720fr":
-	#cropage
-	cropDims="694x84+204+284"
-	# nb dans le masque: 12801
-	MINPIXELON=2300
-	# nb dans le masque: 24999
-	MAXPIXELOFF=2500
-	# masques
-	MASKON = "720fr/mask-on.png"
-	MASKOFF= "720fr/mask-off.png"
+# numéro de la vidéo (incrémenter à chaque fois)
+NUMVID = "xx"
+# formats des noms des fichiers (la partie après le num de la vidéo)
+FORMATNOM = ""
+# format des images utilisées pour la capture (jpg)
+IMGEXT = "jpg"
+
+# intervalle entre deux analyses (5) (secondes minimum dispo avant analyse)
+timeStep = 5
+# nombre de frames extraites par seconde (5)
+FPS = 5
+# nombre maximum de process simultanés d'analyse vidéo (1)
+MAXPROCESS = 1
+# effacer les fichiers intermédiaires (True)
+DELETE = True
+# upload les images sur le site (paramétrer) (False)
+UPLOADFILES = False
+# nombre de secondes min entre deux morts (4)
+TIMEMARGIN = 4
+# point de départ (pour communiquer aux sous process)
+STARTAT = 0
+# durée maximum
+MAXLENGTH = 0
+# temps à ajouter aux temps formatés (en secondes)
+TIMERADD = 0
+# temps de départ
+STARTTIME = time.time()
+
+# clef magique
+MAGICKEY = b"REMPLACEZ MOI PAR LA CLEF SECRETE (la même qu'en ligne)"
+# page d'upload
+UPLOADURL = 'https://quelquepart/chemin/compteur.php'
+
+# cropage
+CROPDIMS="212x48+171+134"
+# nb dans le masque: 3741
+MINPIXELON=800
+# nb dans le masque: 6435
+MAXPIXELOFF=1000
+# masques
+MASKON = "360/mask-on.png"
+MASKOFF= "360/mask-off.png"
 
 #####################################################################
 #####################################################################
 
-def analyse_image(fichierImage, dossierFound):
+def init_res(res = "720fr"):
+	global CROPDIMS, MINPIXELON, MAXPIXELOFF, MASKON, MASKOFF
+	if res == "360":
+		# cropage
+		CROPDIMS="212x48+171+134"
+		# nb dans le masque: 3741
+		MINPIXELON=800
+		# nb dans le masque: 6435
+		MAXPIXELOFF=1000
+		# masques
+		MASKON = "360/mask-on.png"
+		MASKOFF= "360/mask-off.png"
+	elif res == "720":
+		# cropage
+		CROPDIMS="420x90+342+274"
+		# nb dans le masque: 12801
+		MINPIXELON=2300
+		# nb dans le masque: 24999
+		MAXPIXELOFF=2500
+		# masques
+		MASKON = "720/mask-on.png"
+		MASKOFF= "720/mask-off.png"
+	else:
+	#elif res == "720fr":
+		#cropage
+		CROPDIMS="694x68+204+284"
+		# nb dans le masque: 12801
+		MINPIXELON=2300
+		# nb dans le masque: 24999
+		MAXPIXELOFF=2800
+		# masques
+		MASKON = "720fr/mask-on.png"
+		MASKOFF= "720fr/mask-off.png"
+
+#####################################################################
+#####################################################################
+
+def formate_le_temps(timeStamp, isFrames=False):
+	if isFrames:
+		timeStamp = timeStamp / FPS
+	heures = math.floor(timeStamp / 60 / 60)
+	minutes = math.floor(timeStamp / 60) % 60
+	secondes = math.floor(timeStamp) % 60
+	return "%dh%02dm%02ds" % (heures,minutes,secondes)
+	
+
+#####################################################################
+#####################################################################
+
+def traite_la_mort(imageFile,imageName,remplace=""):
+	if UPLOADFILES:
+		UPLOADTRIES = 5
+		tries = UPLOADTRIES
+		while tries > 0:
+			try:
+				filehandle = open(imageFile, "rb")
+				filecode = hmac.new(MAGICKEY, imageName.encode('utf-8'), hashlib.sha1).hexdigest()
+				files = { 'file': (imageName, filehandle)}
+				data = {'filecode': filecode, 'remplace': remplace}
+				res = requests.post(UPLOADURL, files=files, data=data)
+				if res.text[0:2] != "OK":
+					print("UPLOAD ERROR "+imageName)
+				filehandle.close()
+				return "OK"
+			except:
+				print("ERREUR RESEAU - ON RETENTE 2 OU 3 FOIS GENRE")
+				time.sleep(0.01)
+				tries = tries - 1
+
+#####################################################################
+#####################################################################
+
+def analyse_les_found(foundQueue):
+	allTheFound = list()
+	zoneDeRecherche = MAXPROCESS * FPS * TIMEMARGIN
+	while 1:
+		(nomImage, segmentTime, pixelOn) = foundQueue.get()
+		if nomImage == 0: break;
+		# trouver la frame dans le nom du fichier (1-based donc -1)
+		match = re.search(r"death_(\d+)_(\d+)\."+IMGEXT,nomImage)
+		frame = int(match.group(2)) - 1
+		timeStamp = segmentTime + frame / FPS + TIMERADD
+		# vrai "beau" nom
+		if FORMATNOM == "HMS":
+			fullNom = "death_"+NUMVID+"_%s_%d.%s" % (formate_le_temps(timeStamp), frame, IMGEXT)
+		else:
+			fullNom = "death_"+NUMVID+"_%07.1f.%s" % (timeStamp,IMGEXT)
+		# trouver les images dont le timestamp est proche
+		exists = False
+		iStart = max(0,len(allTheFound)-zoneDeRecherche)
+		iEnd = len(allTheFound)
+		for iFound in range(iStart,iEnd):
+			(iNomImage, iTimeStamp, iPixelOn) = allTheFound[iFound]
+			if abs(iTimeStamp-timeStamp) < TIMEMARGIN:
+				exists = True
+				if pixelOn > iPixelOn:
+					# remplacer iFound
+					print("BETTER ! %s (%d vs %d)" % (fullNom,pixelOn,iPixelOn))
+					allTheFound[iFound] = (fullNom, timeStamp, pixelOn)
+					shutil.move(DIRFOUND+nomImage,DIRTRUE+fullNom)
+					os.remove(DIRTRUE+iNomImage)
+					# réupload à chaque fois
+					traite_la_mort(DIRTRUE+fullNom,fullNom,remplace=iNomImage)
+				else:
+					# effacer le notre
+					os.remove(DIRFOUND+nomImage)
+				break
+		# enregistrer l'image et sa quantité de rouge
+		if not exists:
+			print("\nFOUND !! %s > %s (%d)" % (nomImage,fullNom,pixelOn))
+			allTheFound += [(fullNom, timeStamp, pixelOn)]
+			shutil.move(DIRFOUND+nomImage,DIRTRUE+fullNom)
+			traite_la_mort(DIRTRUE+fullNom,fullNom)
+	#
+	return foundQueue.put(allTheFound)
+
+#####################################################################
+#####################################################################
+
+def analyse_image(foundQueue,segmentTime,fichierImage):
 	nomImage = os.path.basename(fichierImage)
 	# croper
-	com = ["convert", fichierImage, "-crop", cropDims, fichierImage+".c."+EXT]
+	com = ["convert", fichierImage, "-crop", CROPDIMS, fichierImage+".c.png"]
 	subprocess.call(com)
 	
 	# appliquer le masque, appliquer les seuils, calculer les pixels
 	tPIXELON = subprocess.check_output(["convert",
-		"-compose", "Multiply", MASKOFF, fichierImage+".c."+EXT, "-composite",
+		"-compose", "Multiply", MASKOFF, fichierImage+".c.png", "-composite",
 		"-modulate", "100,500", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red",
 		"(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
-
+	PIXELON = int(tPIXELON)
+	
 	if DEBUG:
 		# appliquer le masque
-		com = ["composite", "-compose", "Multiply", fichierImage+".c."+EXT, MASKOFF, fichierImage+".m."+EXT]
+		com = ["composite", "-compose", "Multiply", fichierImage+".c.png", MASKOFF, fichierImage+".m.png"]
 		subprocess.call(com)
 		# appliquer les seuils
-		com = ["convert", fichierImage+".m."+EXT, "-modulate", "100,500", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red", fichierImage+".r."+EXT]
+		com = ["convert", fichierImage+".m.png", "-modulate", "100,500", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red", fichierImage+".r.png"]
 		subprocess.call(com)
-		# calculer les pixels
-		tPIXELON = subprocess.check_output(["convert", fichierImage+".r."+EXT, "(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
-
-	PIXELON = int(tPIXELON)
+	
+	if DEBUG:
+		# appliquer le masque, appliquer les seuils, calculer les pixels
+		tPIXELOFF = subprocess.check_output(["convert",
+			"-compose", "Multiply", MASKON, fichierImage+".c.png", "-composite",
+			"-modulate", "100,500",
+			"-fill", "Black", "-fuzz", "25%", "+opaque", "Red",
+			"(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
+		PIXELOFF = int(tPIXELOFF)
+		print("---- %s : %d / %d" % (nomImage,PIXELON,PIXELOFF))
+		
 	
 	if PIXELON > MINPIXELON:
 		# appliquer le masque, appliquer les seuils, calculer les pixels
-		tPIXELOFF = subprocess.check_output(["convert",
-			"-compose", "Multiply", MASKON, fichierImage+".c."+EXT, "-composite",
-			"-modulate", "100,500", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red",
-			"(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
-		
+		if not DEBUG:
+			tPIXELOFF = subprocess.check_output(["convert",
+				"-compose", "Multiply", MASKON, fichierImage+".c.png", "-composite",
+				"-modulate", "100,500",
+				"-fill", "Black", "-fuzz", "25%", "+opaque", "Red",
+				"(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
+			PIXELOFF = int(tPIXELOFF)
+	
 		if DEBUG:
 			# appliquer le masque
-			com = ["composite", "-compose", "Multiply", fichierImage+".c."+EXT, MASKON, fichierImage+".n."+EXT]
+			com = ["composite", "-compose", "Multiply", fichierImage+".c.png", MASKON, fichierImage+".n.png"]
 			subprocess.call(com)
 			# appliquer les seuils
-			com = ["convert", fichierImage+".n."+EXT, "-modulate", "100,500", fichierImage+".q."+EXT]
+			com = ["convert", fichierImage+".n.png", "-modulate", "100,500", fichierImage+".q.png"]
 			subprocess.call(com)
-			com = ["convert", fichierImage+".q."+EXT, "-fill", "Black", "-fuzz", "25%", "+opaque", "Red", fichierImage+".q."+EXT]
+			com = ["convert", fichierImage+".q.png", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red", fichierImage+".q.png"]
 			subprocess.call(com)
-			# calculer les pixels
-			tPIXELOFF = subprocess.check_output(["convert", fichierImage+".q."+EXT, "(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
 
-		PIXELOFF = int(tPIXELOFF)
-	
 		#print("%s: %6d /%6d" % (nomImage, PIXELON, PIXELOFF))
-		if PIXELON > MINPIXELON and PIXELOFF < MAXPIXELOFF:
-			print("FOUND !! "+nomImage)
-			shutil.copyfile(fichierImage,dossierFound+nomImage)
+		if PIXELOFF < max( MAXPIXELOFF, 0.5 * PIXELON ):
+			#print("FOUND !! "+nomImage)
+			shutil.copyfile(fichierImage,DIRFOUND+nomImage)
+			foundQueue.put( (nomImage,segmentTime,PIXELON) )
 	
 	if DELETE:
 		for image in glob.glob(fichierImage+".*"):
@@ -112,100 +261,285 @@ def analyse_image(fichierImage, dossierFound):
 #####################################################################
 #####################################################################
 
-def analyse_video(queue,advance,deltaT):
+def analyse_video(segmentTime, syncQueue, foundQueue):
 	# diagnostics
 	nPixon = 0
 	temps_debut = time.time()
 	#
-	t_advance = str(advance)
-	p_advance = "%05d" % (advance)
-	out_print = ""
-	print("P"+p_advance+" START")
+	t_segmentTime = str(segmentTime)
+	p_segmentTime = "%05d" % (segmentTime)
+	#print("P"+p_segmentTime+" START")
 	#
 	FNULL = open(os.devnull, 'w')
-	#ffmpeg -i "$DIR/stream.mp4" -ss "$advance" -t "$timeStep" -vf fps=5 "$DIR/img/death_$advance_%04d.png"
-	###command = ["ffmpeg", "-i", DIR+VID, "-ss", advance, "-t", str(timeStep), "-vf", "fps="+str(fps), DIR+"/img/death_"+p_advance+"_%04d.jpg"]
+	#ffmpeg -i "$DIR/stream.mp4" -ss "$segmentTime" -t "$timeStep" -vf fps=5 "$DIR/img/death_$segmentTime_%04d.png"
+	###command = ["ffmpeg", "-i", SOURCE, "-ss", segmentTime, "-t", str(timeStep), "-vf", "fps="+str(fps), DIR+"/img/death_"+p_segmentTime+"_%04d.jpg"]
 	###subprocess.call(command, stdout=FNULL, stderr=FNULL)
 
 	# on découpe la section de la vidéo correspondant (sans réencodage, sans le son)
 	# -ss AVANT le -i change la façon dont ça marche (fast seek avant, lent après)
-	command = ["ffmpeg", "-y", "-ss", t_advance, "-i", DIR+VID, "-an", "-t", str(timeStep), DIR+"ivid/stream-"+p_advance+".mpg"]
+	command = ["ffmpeg", "-y", "-ss", t_segmentTime, "-i", SOURCE, "-c", "copy", "-an", "-t", str(timeStep), DIRVID+"stream-"+p_segmentTime+".mpg"]
 	subprocess.call(command, stdout=FNULL, stderr=FNULL)
 	
-	# on crée les images dans le dossier img en les taggant avec advance
-	command = ["ffmpeg", "-y", "-i", DIR+"ivid/stream-"+p_advance+".mpg", "-vf", "fps="+str(fps), "-q:v", "1", DIR+"img/death_"+p_advance+"_%04d.jpg"]
+	# on crée les images dans le dossier img en les taggant avec segmentTime
+	command = ["ffmpeg", "-y", "-i", DIRVID+"stream-"+p_segmentTime+".mpg", "-vf", "fps="+str(FPS), "-q:v", "1", DIRIMG+"death_"+p_segmentTime+"_%04d."+IMGEXT]
 	subprocess.call(command, stdout=FNULL, stderr=FNULL)
 	
-	temps_ffmpeg = "%0.2f" % (time.time() - temps_debut)
-	if DEBUG:
-		out_print += "    -- TIME FF: "+temps_ffmpeg+"\n"
+	##temps_ffmpeg = "%0.2f" % (time.time() - temps_debut)
 	
 	# pour chaque image
-	images = list(filter(
-		lambda x: not re.search("jpg\..*\.png",x), 
-		glob.glob(DIR+"/img/death_"+p_advance+"_*.jpg")
-	))
+	images = list(glob.glob(DIRIMG+"death_"+p_segmentTime+"_*."+IMGEXT))
 	
 	for image in images:
 		# faire tout le boulot sur les images
-		(isPixon) = analyse_image(image,DIR+"/found/")
+		(isPixon) = analyse_image(foundQueue,segmentTime,image)
 		if isPixon: nPixon += 1
-	
-	if DEBUG:
-		out_print += "    -- N images: %d ON: %d\n" % (len(images),nPixon)
 	
 	# rm
 	if DELETE:
-		os.remove(DIR+"ivid/stream-"+p_advance+".mpg")
+		os.remove(DIRVID+"stream-"+p_segmentTime+".mpg")
 		for image in images:
  			os.remove(image)
 	
 	# calculs de temps et diagnostics
-	temps_total = "%0.2f" % (time.time() - temps_debut)
-	speedup = "%0.2f" % ( timeStep / (time.time() - temps_debut))
-	pctOn = "%0.1f" % ( 100 * nPixon/len(images) )
-	#
-	out_print += "    -- dT: "+( "%0.1f" %(deltaT) )+" Acc:"+speedup+" Total: "+temps_total+" ON: "+pctOn+"% \n"
-	print("P"+p_advance+" FINISHED\n"+out_print)
-	queue.put(advance)
+	if DIAGNOS:
+		temps_total = "%0.2f" % (time.time() - temps_debut)
+		speedup = timeStep / (time.time() - temps_debut)
+		pctOn = "%0.1f" % ( 100 * nPixon/len(images) )
+		avance = (segmentTime + timeStep - STARTAT) - (time.time() - STARTTIME)
+		global_speedup = (segmentTime + timeStep - STARTAT) / (time.time() - STARTTIME)
+		#
+		print(
+			"P"+ ("%05d" % (segmentTime+TIMERADD))
+			+" Avance:%.1fs" % (avance)
+			+" (%0.2fx)" % (global_speedup)
+			+" Segment:"+temps_total+"s"
+			+" (%0.2fx)" % (speedup)
+			+" ON:"+pctOn+"%"
+			+" T:"+formate_le_temps(segmentTime)
+			+"\n"
+		)
+	else:
+		print(".",end="",flush=True)
+	syncQueue.put(segmentTime)
+
+#####################################################################
+#####################################################################
+
+def videoLength():
+	bytes = subprocess.check_output(["ffprobe", "-i", SOURCE, "-show_format", "-v", "quiet"])
+	data = str(bytes,'utf-8')
+	match = re.search(r"duration=(\d+\.\d*)",data)
+	duration = float(match.group(1))
+	return duration
+
+#####################################################################
+#####################################################################
+
+def processStream(isLive = True):
+	print("Procs:%d Step:%d Video:%s Live:%s Upload:%s"
+		% (MAXPROCESS, timeStep, SOURCE, ("non","oui")[isLive], ("non","oui")[UPLOADFILES]) )
+	if DELETE:
+		for file in glob.glob(DIRIMG+"*"):
+			os.remove(file)
+		for file in glob.glob(DIRVID+"*"):
+			os.remove(file)
+	syncQueue = Queue()
+	foundQueue = Queue()
+	# temps analysé (secondes depuis le dépuis le début de la vidéo)
+	segmentTime = STARTAT
+	# nombre de process en cours
+	nProcess = 0
+	# lancer un process qui va attendre de façon bloquante sur la foundQueue
+	# et sélectionner les images qu'il reçoit
+	pAnalyseLesFound = Process(target=analyse_les_found, args=(foundQueue,))
+	pAnalyseLesFound.start()
+	while True:
+		# tester la durée de la vidéo
+		duration = videoLength()
+		
+		# tant qu'il reste de la vidéo à traiter (duration > segmentTime)
+		# - attendre qu'il y ait des workers de libre
+		# - traiter des segments
+		
+		while duration > segmentTime + timeStep:
+			if nProcess >= MAXPROCESS:
+				out = syncQueue.get()
+				nProcess -= 1
+			# ICI on lance un process
+			#analyse_video(syncQueue,segmentTime,deltaT,foundQueue)
+			p = Process(target=analyse_video, args=(segmentTime, syncQueue, foundQueue,))
+			p.start()
+			nProcess += 1
+			# passage au step suivant
+			segmentTime += timeStep
+			# test de la durée maximum
+			if MAXLENGTH > 0:
+				if segmentTime >= STARTAT + MAXLENGTH:
+					break
+			# marqueur de temps à intervalle régulier
+			if segmentTime % (5*60) < timeStep:
+				print(formate_le_temps(segmentTime))
+
+		
+		# quand on a traité tous les segments
+		# - si on n'est pas sur un live, traiter le dernier segment
+		# - si on est sur un live, boucler
+		if not isLive: break
+	
+	if MAXLENGTH == 0:
+		p = Process(target=analyse_video, args=(segmentTime, syncQueue, foundQueue,))
+		p.start()
+		nProcess += 1
+
+	# attendre les process d'analyse vidéo
+	while nProcess > 0:
+		out = syncQueue.get()
+		nProcess -= 1
+	# fermer le process d'analyse des found
+	foundQueue.put((0,0,0))
+	pAnalyseLesFound.join()
+	# on a fini !
+	totalTime = time.time() - STARTTIME
+	print("\n")
+	print("Temps écoulé: %.1f" % (totalTime))
+	print("Temps analysé: %.1f" % (duration))
+	print("Efficacité: %.1fx" % (duration / totalTime))
+	
+#####################################################################
+#####################################################################
+
+def processImages():
+	foundQueue = Queue()
+	images = glob.glob(DIRIMG+"death_*."+IMGEXT)
+	# lancer un process qui va attendre de façon bloquante sur la foundQueue
+	# et sélectionner les images qu'il reçoit
+	pAnalyseLesFound = Process(target=analyse_les_found, args=(foundQueue,))
+	pAnalyseLesFound.start()
+	for fichierImage in images:
+		match = re.search(r"death_(\d+)_(\d+)\."+IMGEXT,fichierImage)
+		segmentTime = int(match.group(1))
+		print(".",end="")
+		analyse_image(foundQueue,segmentTime,fichierImage)
+	foundQueue.put((0,0,0))
+	pAnalyseLesFound.join()
+	allTheFound = foundQueue.get()
+	print("\nOn a trouvé %d morts !!" % (len(allTheFound)))
 
 #####################################################################
 #####################################################################
 
 if __name__ == '__main__':
-	if DELETE:
-		for file in glob.glob(VID+"img/*"):
-			os.remove(file)
-		for file in glob.glob(VID+"ivid/*"):
-			os.remove(file)
-	queue = Queue()
-	advance = 0
-	while 1:
-		#DURATION=`ffprobe -i tests/stream.mp4 -show_format -v quiet | sed -n 's/duration=//p'`
-		bytes = subprocess.check_output(["ffprobe", "-i", DIR+VID, "-show_format", "-v", "quiet"])
-		data = str(bytes,'utf-8')
-		match = re.search(r"duration=(\d+)",data)
-		duration = int(match.group(1))
-	
-		if duration < advance + timeStep:
-			time.sleep(0.01)
-			deltaT += 0.01
-			continue
-	
-		if nProcess < MAXPROCESS:
-			nProcess += 1
-			# ICI on lance un thread (ou un process)
-			#analyse_video(queue,str(advance))
-			p = Process(target=analyse_video, args=(queue,advance,deltaT,))
-			p.start()
-			advance += timeStep
-			deltaT = 0
+	# sélectionner images / stream / video selon les paramètres
+	# image trie les images found
+	# - les mettre dans deaths
+	# - supprimer de found ? ou quoi ?
+	# stream parse le stream
+	# video s'arrête à la fin de la video
+	parser = argparse.ArgumentParser()
+	parser.add_argument('-n', help='Numéro de la session (numéro de la VOD)', required=True)
+	parser.add_argument('-i', action='store_true', help='Analyser les images au lieu de la video')
+	parser.add_argument('-v', action='store_true', help='Analyser une vidéo fixe plutôt que le stream')
+	parser.add_argument('-u', action='store_true', help='Uploader les vidéos sur le site')
+	parser.add_argument('--uploadurl', help='Url du script d\'upload des fichiers')
+	parser.add_argument('--magickey', help='Clef de sécurité pour le script')
+	parser.add_argument('-p', help='Nombre maximum de process (1-8 typiquement)')
+	parser.add_argument('-s', help='Longueur du pas (en secondes)')
+	parser.add_argument('-r', help='Résolution et masques (360, 720, 720fr)')
+	parser.add_argument('--dir', help='Dossier racine des fichiers temporaires et de sortie')
+	parser.add_argument('--source', help='Chemin d\'accès du fichier vidéo source')
+	parser.add_argument('--format', help='Format du timestamp du nom des fichiers (HMS)')
+	parser.add_argument('--startat', help='Point de départ de l\'analyse (en secondes)')
+	parser.add_argument('--length', help='D\'arrêter après avoir analysé cette durée')
+	parser.add_argument('--addtime', help='Temps à ajouter au compteur lors de la création de fichier')
+	parser.add_argument('--nodelete', action='store_true', help='Ne pas effacer les fichiers temporaires')
+	parser.add_argument('--diagnos', action='store_true', help='Afficher les messages de diagnostique')
+	parser.add_argument('--debug', action='store_true', help='Créer des fichiers temporaires supplémentaires')
+	parser.add_argument('--png', action='store_true', help='Générer les captures en PNG (jpg par défaut)')
+	args = parser.parse_args()
+	#
+	try:
+		if int(args.p) > 0:
+			MAXPROCESS = int(args.p)
+	except:
+		pass
+	#
+	try:
+		if int(args.s) > 0:
+			timeStep = int(args.s)
+	except:
+		pass
+	#
+	try:
+		if int(args.length) > 0:
+			MAXLENGTH = int(args.length)
+	except:
+		pass
+	#
+	try:
+		if int(args.addtime) > 0:
+			TIMERADD = int(args.addtime)
+	except:
+		pass
+	#
+	if args.magickey:
+		MAGICKEY = args.magickey
+	#
+	if args.uploadurl:
+		UPLOADURL = args.uploadurl
+	#
+	if args.r:
+		init_res(args.r)
+	else:
+		init_res()
+	#
+	if args.n:
+		NUMVID = args.n
+	#
+	if args.dir:
+		if os.path.exists(args.dir):
+			DIR = args.dir
+			if DIR[-1:] != "/":
+				DIR = DIR + "/"
+			init_dirs()
+	#
+	if args.source:
+		SOURCE = args.source
+	#
+	if args.u:
+		UPLOADFILES = True
+	#
+	if args.nodelete:
+		DELETE = False
+	#
+	if args.diagnos:
+		DIAGNOS = True
+	#
+	if args.debug:
+		DEBUG = True
+	#
+	if args.png:
+		IMGEXT = "png"
+	#
+	if args.format:
+		FORMATNOM = args.format
+	#
+	startat = 0
+	if args.startat:
+		mat = re.match(r'(\d+)h(\d+)m(\d+)s',args.startat)
+		if mat:
+			STARTAT = int(mat.group(1))*60*60+int(mat.group(2))*60+int(mat.group(3))
 		else:
-			#print("TOO MANY PROCESS : %d" %(nProcess))
-			pass
-		
-		try:
-			out = queue.get(False)
-			nProcess -= 1
-		except:
-			pass
+			try:
+				if int(args.startat) >= 0:
+					STARTAT = int(args.startat)
+			except:
+				pass
+	# TODO: tester l'existence de DIR / créer les sous dossiers	
+	#
+	if args.i:
+		processImages()
+	elif args.v:
+		processStream(isLive = False)
+	else:
+		processStream(isLive = True)
+	

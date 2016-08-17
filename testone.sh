@@ -31,7 +31,7 @@ if [ "$res" = "720" ]; then
 fi
 if [ "$res" = "720fr" ]; then
 	#cropage
-	cropDims="694x84+204+284"
+	cropDims="694x68+204+284"
 	# nb dans le masque: 12801
 	MINPIXELON=2300
 	# nb dans le masque: 24999
