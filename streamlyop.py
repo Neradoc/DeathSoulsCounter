@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import argparse, math
+import argparse, math, atexit
 import requests, hmac, hashlib
 import subprocess,re,time,glob,os,shutil,configparser
 from multiprocessing import Process, Queue, SimpleQueue, Pool
@@ -20,14 +20,6 @@ DIRIMG = DIR+"img/"
 DIRVID = DIR+"ivid/"
 # chemin de la vidéo source
 SOURCE = DIR+"stream.mpg"
-
-def init_dirs():
-	global DIRFOUND,DIRTRUE,DIRIMG,DIRVID,SOURCE
-	DIRFOUND = DIR+"found/"
-	DIRTRUE = DIR+"deaths/"
-	DIRIMG = DIR+"img/"
-	DIRVID = DIR+"ivid/"
-	SOURCE = DIR+"stream.mpg"
 
 # numéro de la vidéo (incrémenter à chaque fois)
 NUMVID = "xx"
@@ -75,6 +67,36 @@ MASKOFF= "360/mask-off.png"
 #####################################################################
 #####################################################################
 
+# pour le bug dans python pour MacOSX qui nique la ligne de commande
+def restoreCommandLine():
+	subprocess.call(["stty","echo"])
+
+#####################################################################
+#####################################################################
+
+def safeInt(input,defo=0):
+	try:
+		return int(input)
+	except:
+		return defo
+
+#####################################################################
+#####################################################################
+
+def init_dirs():
+	global DIRFOUND,DIRTRUE,DIRIMG,DIRVID,SOURCE
+	DIRFOUND = DIR+"found/"
+	DIRTRUE = DIR+"deaths/"
+	DIRIMG = DIR+"img/"
+	DIRVID = DIR+"ivid/"
+	SOURCE = DIR+"stream.mpg"
+	for thedir in [DIRFOUND,DIRTRUE,DIRIMG,DIRVID]:
+		if not os.path.exists(thedir):
+			os.mkdir(thedir)
+
+#####################################################################
+#####################################################################
+
 def init_res(res = "720fr"):
 	global CROPDIMS, MINPIXELON, MAXPIXELOFF, MASKON, MASKOFF
 	setupFile = res+"/setup.ini"
@@ -83,9 +105,16 @@ def init_res(res = "720fr"):
 		setup.read(setupFile)
 		CROPDIMS = setup.get("masks","CROPDIMS",fallback="10x10+100+20")
 		MINPIXELON = setup.get("masks","MINPIXELON",fallback="2000")
+		MINPIXELON = safeInt(MINPIXELON, 2000)
 		MAXPIXELOFF = setup.get("masks","MAXPIXELOFF",fallback="4000")
+		MAXPIXELOFF = safeInt(MAXPIXELOFF, 4000)
 		MASKON = res+"/mask-on.png"
 		MASKOFF= res+"/mask-off.png"
+	print("CROPDIMS : "+str(CROPDIMS))
+	print("MINPIXELON : "+str(MINPIXELON))
+	print("MAXPIXELOFF : "+str(MAXPIXELOFF))
+	print("MASKON : "+str(MASKON))
+	print("MASKOFF : "+str(MASKOFF))
 
 #####################################################################
 #####################################################################
@@ -244,6 +273,7 @@ def analyse_video(segmentTime, syncQueue, foundQueue):
 	# diagnostics
 	nPixon = 0
 	temps_debut = time.time()
+	vid_ext = os.path.splitext(SOURCE)[1]
 	#
 	t_segmentTime = str(segmentTime)
 	p_segmentTime = "%05d" % (segmentTime)
@@ -256,11 +286,11 @@ def analyse_video(segmentTime, syncQueue, foundQueue):
 
 	# on découpe la section de la vidéo correspondant (sans réencodage, sans le son)
 	# -ss AVANT le -i change la façon dont ça marche (fast seek avant, lent après)
-	command = ["ffmpeg", "-y", "-ss", t_segmentTime, "-i", SOURCE, "-c", "copy", "-an", "-t", str(timeStep), DIRVID+"stream-"+p_segmentTime+".mpg"]
+	command = ["ffmpeg", "-y", "-ss", t_segmentTime, "-i", SOURCE, "-c", "copy", "-an", "-t", str(timeStep), DIRVID+"stream-"+p_segmentTime+vid_ext]
 	subprocess.call(command, stdout=FNULL, stderr=FNULL)
 	
 	# on crée les images dans le dossier img en les taggant avec segmentTime
-	command = ["ffmpeg", "-y", "-i", DIRVID+"stream-"+p_segmentTime+".mpg", "-vf", "fps="+str(FPS), "-q:v", "1", DIRIMG+"death_"+p_segmentTime+"_%04d."+IMGEXT]
+	command = ["ffmpeg", "-y", "-i", DIRVID+"stream-"+p_segmentTime+vid_ext, "-vf", "fps="+str(FPS), "-q:v", "1", DIRIMG+"death_"+p_segmentTime+"_%04d."+IMGEXT]
 	subprocess.call(command, stdout=FNULL, stderr=FNULL)
 	
 	##temps_ffmpeg = "%0.2f" % (time.time() - temps_debut)
@@ -275,7 +305,7 @@ def analyse_video(segmentTime, syncQueue, foundQueue):
 	
 	# rm
 	if DELETE:
-		os.remove(DIRVID+"stream-"+p_segmentTime+".mpg")
+		os.remove(DIRVID+"stream-"+p_segmentTime+vid_ext)
 		for image in images:
  			os.remove(image)
 	
@@ -315,8 +345,11 @@ def videoLength():
 #####################################################################
 
 def processStream(isLive = True):
-	print("Procs:%d Step:%d Video:%s Live:%s Upload:%s"
+	print("Procs:%d\nStep:%d\nVideo:%s\nLive:%s\nUpload:%s"
 		% (MAXPROCESS, timeStep, SOURCE, ("non","oui")[isLive], ("non","oui")[UPLOADFILES]) )
+	if not os.path.exists(SOURCE):
+		print("La vidéo SOURCE n'existe pas !! "+SOURCE)
+		exit()
 	if DELETE:
 		for file in glob.glob(DIRIMG+"*"):
 			os.remove(file)
@@ -408,6 +441,8 @@ def processImages():
 #####################################################################
 
 if __name__ == '__main__':
+	# pour le bug python MacOSX
+	atexit.register(restoreCommandLine)
 	# sélectionner images / stream / video selon les paramètres
 	# image trie les images found
 	# - les mettre dans deaths
@@ -415,20 +450,20 @@ if __name__ == '__main__':
 	# stream parse le stream
 	# video s'arrête à la fin de la video
 	parser = argparse.ArgumentParser()
-	parser.add_argument('-n', help='Numéro de la session (numéro de la VOD)', required=True)
-	parser.add_argument('-i', action='store_true', help='Analyser les images au lieu de la video')
-	parser.add_argument('-v', action='store_true', help='Analyser une vidéo fixe plutôt que le stream')
-	parser.add_argument('-u', action='store_true', help='Uploader les vidéos sur le site')
+	parser.add_argument('--numsession', '-n', help='Numéro de la session (numéro de la VOD)', required=True)
+	parser.add_argument('--images', '-i', action='store_true', help='Analyser les images au lieu de la video')
+	parser.add_argument('--video', '-v', action='store_true', help='Analyser une vidéo fixe plutôt que le stream')
+	parser.add_argument('--upload', '-u', action='store_true', help='Uploader les vidéos sur le site')
 	parser.add_argument('--uploadurl', help='Url du script d\'upload des fichiers')
-	parser.add_argument('--magickey', help='Clef de sécurité pour le script')
-	parser.add_argument('-p', help='Nombre maximum de process (1-8 typiquement)')
-	parser.add_argument('-s', help='Longueur du pas (en secondes)')
-	parser.add_argument('-r', help='Résolution et masques (360, 720, 720fr)')
+	parser.add_argument('--uploadkey', help='Clef de sécurité pour le script')
+	parser.add_argument('--procs', '-p', help='Nombre maximum de process (1-8 typiquement)')
+	parser.add_argument('--step', '-s', help='Longueur du pas (en secondes)')
+	parser.add_argument('--maskdir', '-m', help='Dossier des données de masques')
 	parser.add_argument('--dir', help='Dossier racine des fichiers temporaires et de sortie')
 	parser.add_argument('--source', help='Chemin d\'accès du fichier vidéo source')
 	parser.add_argument('--format', help='Format du timestamp du nom des fichiers (HMS)')
 	parser.add_argument('--startat', help='Point de départ de l\'analyse (en secondes)')
-	parser.add_argument('--length', help='D\'arrêter après avoir analysé cette durée')
+	parser.add_argument('--length', help='S\'arrêter après avoir analysé cette durée')
 	parser.add_argument('--addtime', help='Temps à ajouter au compteur lors de la création de fichier')
 	parser.add_argument('--nodelete', action='store_true', help='Ne pas effacer les fichiers temporaires')
 	parser.add_argument('--diagnos', action='store_true', help='Afficher les messages de diagnostique')
@@ -437,14 +472,14 @@ if __name__ == '__main__':
 	args = parser.parse_args()
 	#
 	try:
-		if int(args.p) > 0:
-			MAXPROCESS = int(args.p)
+		if int(args.procs) > 0:
+			MAXPROCESS = int(args.procs)
 	except:
 		pass
 	#
 	try:
-		if int(args.s) > 0:
-			timeStep = int(args.s)
+		if int(args.step) > 0:
+			timeStep = int(args.step)
 	except:
 		pass
 	#
@@ -460,19 +495,22 @@ if __name__ == '__main__':
 	except:
 		pass
 	#
-	if args.magickey:
-		MAGICKEY = args.magickey
+	if args.upload:
+		UPLOADFILES = True
 	#
 	if args.uploadurl:
 		UPLOADURL = args.uploadurl
 	#
-	if args.r:
-		init_res(args.r)
+	if args.uploadkey:
+		MAGICKEY = args.uploadkey
+	#
+	if args.maskdir:
+		init_res(args.maskdir)
 	else:
 		init_res()
 	#
-	if args.n:
-		NUMVID = args.n
+	if args.numsession:
+		NUMVID = args.numsession
 	#
 	if args.dir:
 		if os.path.exists(args.dir):
@@ -483,9 +521,6 @@ if __name__ == '__main__':
 	#
 	if args.source:
 		SOURCE = args.source
-	#
-	if args.u:
-		UPLOADFILES = True
 	#
 	if args.nodelete:
 		DELETE = False
@@ -515,10 +550,9 @@ if __name__ == '__main__':
 				pass
 	# TODO: tester l'existence de DIR / créer les sous dossiers	
 	#
-	if args.i:
+	if args.images:
 		processImages()
-	elif args.v:
+	elif args.video:
 		processStream(isLive = False)
 	else:
 		processStream(isLive = True)
-	
