@@ -77,8 +77,8 @@ function baseUrl() {
 <head>
 	<title><?php echo $TITRE ?></title>
 	<meta http-equiv="content-type" content="text/html; charset=utf-8">
-	<script src="~jq/v1.js" type="text/javascript" language="javascript"></script>
-	<link rel="stylesheet" href="~jq/jsbox/jsbox.css" />
+	<script src="jq/v1.js" type="text/javascript" language="javascript"></script>
+	<link rel="stylesheet" href="jq/jsbox/jsbox.css" />
 	<script src="jq/jsbox/jsbox.js" type="text/javascript" language="javascript"></script>
 	<?php if($TARGET_URL) print('<base href="'.$TARGET_URL.'"/>'); ?>
 	<script type="text/javascript">
@@ -114,6 +114,7 @@ function baseUrl() {
 		$(targets).jsbox();
 		//
 		disp_visibles();
+		setInterval(disp_visibles,1000);
 		$(window).resize(disp_visibles);
 		$(window).scroll(disp_visibles);
 	});
@@ -126,32 +127,31 @@ function baseUrl() {
 		}
 		td {
 			padding: 2px 5px;
-			border-right: 1px dashed #BBB;
-			border-bottom: 1px solid #BBB;
+			/* border-right: 1px dashed #BBB; */
+			/* border-bottom: 1px solid #BBB; */
 		}
 		td.col_mini {
-			 width:<?php echo $mini_size; ?>px;
-			 height:<?php echo $mini_size; ?>px;
-			 text-align:center;
-			 vertical-align:middle;
+			padding: 0px 8px 16px;
+			min-width:<?php echo $mini_size; ?>px;
+			max-height:<?php echo $mini_size; ?>px;
+			text-align:center;
+			vertical-align:middle;
 		}
-		.lien_direct {
-			font-size: 90%;
-			color: #888;
-			background: #EEE;
+		.lien_titre {
+			font-size: 12px;
 		}
 	</style>
 </head>
 <body>
-<h1><?php echo $TITRE ?></h1>
-<!-- <div><a href="..">remonter</a></div> -->
-<table>
 <?php
+ob_start();
 $i = 0;
 $ncase = 0;
+rsort($files);
 foreach($files as $file):
 	$i++;
-	$href = basename($file);
+	$href = str_replace(__DIR__."/","",$file);
+	#$href = basename($file);
 	$href_abs = baseUrl().$href;
 	$img = $href;
 	$is_ebook = false;
@@ -167,7 +167,7 @@ foreach($files as $file):
 		$hbook = $href; // preg_replace(',^[a-z]+://,','ereader://',$href_abs);
 		$is_ebook = true;
 	}
-	$title = $href;
+	$title = basename($href);
 	if($TRANSFORME_NOMS) {
 		$title = preg_replace('/\.(jpg|png|gif|jpeg)$/i','',$title);
 		$title = preg_replace('/[-_]/',' ',$title);
@@ -190,7 +190,7 @@ foreach($files as $file):
 	<?php endif; ?>
 		<td class="col1 col_mini">
 			<a id="a_num_<?php echo $i ?>" href="<?php echo $href ?>" class="navigue" rel="galerie" title="<?php echo $href ?>"><img class="mini notini" src="img/gris.png" data-link="<?php echo $img ?>" /></a><br/>
-			<a data-num="<?php echo $i ?>" href="<?php echo $href ?>" onclick="$('#a_num_'+$(this).data('num')).click(); return false;"><?php echo $title ?></a>
+			<a class="lien_titre" data-num="<?php echo $i ?>" href="<?php echo $href ?>" onclick="$('#a_num_'+$(this).data('num')).click(); return false;"><?php echo $title ?></a>
 		</td>
 	<?php if($ncase %5 == 4): ?>
 	</tr>
@@ -199,7 +199,14 @@ foreach($files as $file):
 	$ncase++;
 	endif; ?>
 <?php
-endforeach; ?>
+endforeach;
+$la_liste = ob_get_clean();
+?>
+<h1><?php echo $TITRE ?></h1>
+<div>(<?=$ncase?> éléments)</div>
+<!-- <div><a href="..">remonter</a></div> -->
+<table>
+<?php print($la_liste); ?>
 </table>
 </body>
 </html>
