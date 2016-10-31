@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
-import argparse,math
+import argparse, math
 import requests, hmac, hashlib
-import subprocess,re,time,glob,os,shutil
+import subprocess,re,time,glob,os,shutil,configparser
 from multiprocessing import Process, Queue, SimpleQueue, Pool
 
 DEBUG = False
@@ -58,7 +58,7 @@ TIMERADD = 0
 STARTTIME = time.time()
 
 # clef magique
-MAGICKEY = b"REMPLACEZ MOI PAR LA CLEF SECRETE (la même qu'en ligne)"
+MAGICKEY = b"REMPLACEZ MOI PAR LA CLEF SECRETE"
 # page d'upload
 UPLOADURL = 'https://quelquepart/chemin/compteur.php'
 
@@ -77,37 +77,15 @@ MASKOFF= "360/mask-off.png"
 
 def init_res(res = "720fr"):
 	global CROPDIMS, MINPIXELON, MAXPIXELOFF, MASKON, MASKOFF
-	if res == "360":
-		# cropage
-		CROPDIMS="212x48+171+134"
-		# nb dans le masque: 3741
-		MINPIXELON=800
-		# nb dans le masque: 6435
-		MAXPIXELOFF=1000
-		# masques
-		MASKON = "360/mask-on.png"
-		MASKOFF= "360/mask-off.png"
-	elif res == "720":
-		# cropage
-		CROPDIMS="420x90+342+274"
-		# nb dans le masque: 12801
-		MINPIXELON=2300
-		# nb dans le masque: 24999
-		MAXPIXELOFF=2500
-		# masques
-		MASKON = "720/mask-on.png"
-		MASKOFF= "720/mask-off.png"
-	else:
-	#elif res == "720fr":
-		#cropage
-		CROPDIMS="694x68+204+284"
-		# nb dans le masque: 12801
-		MINPIXELON=2300
-		# nb dans le masque: 24999
-		MAXPIXELOFF=2800
-		# masques
-		MASKON = "720fr/mask-on.png"
-		MASKOFF= "720fr/mask-off.png"
+	setupFile = res+"/setup.ini"
+	if os.path.exists(setupFile):
+		setup = configparser.ConfigParser()
+		setup.read(setupFile)
+		CROPDIMS = setup.get("masks","CROPDIMS",fallback="10x10+100+20")
+		MINPIXELON = setup.get("masks","MINPIXELON",fallback="2000")
+		MAXPIXELOFF = setup.get("masks","MAXPIXELOFF",fallback="4000")
+		MASKON = res+"/mask-on.png"
+		MASKOFF= res+"/mask-off.png"
 
 #####################################################################
 #####################################################################
@@ -131,7 +109,7 @@ def traite_la_mort(imageFile,imageName,remplace=""):
 		while tries > 0:
 			try:
 				filehandle = open(imageFile, "rb")
-				filecode = hmac.new(MAGICKEY, imageName.encode('utf-8'), hashlib.sha1).hexdigest()
+				filecode = hmac.new(MAGICKEY.encode(), imageName.encode('utf-8'), hashlib.sha1).hexdigest()
 				files = { 'file': (imageName, filehandle)}
 				data = {'filecode': filecode, 'remplace': remplace}
 				res = requests.post(UPLOADURL, files=files, data=data)
@@ -139,8 +117,9 @@ def traite_la_mort(imageFile,imageName,remplace=""):
 					print("UPLOAD ERROR "+imageName)
 				filehandle.close()
 				return "OK"
-			except:
+			except Exception as e:
 				print("ERREUR RESEAU - ON RETENTE 2 OU 3 FOIS GENRE")
+				print(e)
 				time.sleep(0.01)
 				tries = tries - 1
 
@@ -345,7 +324,7 @@ def processStream(isLive = True):
 			os.remove(file)
 	syncQueue = Queue()
 	foundQueue = Queue()
-	# temps analysé (secondes depuis le dépuis le début de la vidéo)
+	# temps analysé (secondes depuis le début de la vidéo)
 	segmentTime = STARTAT
 	# nombre de process en cours
 	nProcess = 0
