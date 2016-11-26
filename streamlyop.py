@@ -21,6 +21,14 @@ DIRVID = DIR+"ivid/"
 # chemin de la vidéo source
 SOURCE = DIR+"stream.mpg"
 
+# exécutables ffmpeg/libav
+FFMPEG_EXE = "ffmpeg"
+FFMPEG_PROBE = "ffprobe"
+
+# exécutables imagemagick
+IMGMGK_COMP = "composite"
+IMGMGK_CONV = "convert"
+
 # numéro de la vidéo (incrémenter à chaque fois)
 NUMVID = "xx"
 # formats des noms des fichiers (la partie après le num de la vidéo)
@@ -205,11 +213,11 @@ def analyse_les_found(foundQueue):
 def analyse_image(foundQueue,segmentTime,fichierImage):
 	nomImage = os.path.basename(fichierImage)
 	# croper
-	com = ["convert", fichierImage, "-crop", CROPDIMS, fichierImage+".c.png"]
+	com = [IMGMGK_CONV, fichierImage, "-crop", CROPDIMS, fichierImage+".c.png"]
 	subprocess.call(com)
 	
 	# appliquer le masque, appliquer les seuils, calculer les pixels
-	tPIXELON = subprocess.check_output(["convert",
+	tPIXELON = subprocess.check_output([IMGMGK_CONV,
 		"-compose", "Multiply", MASKOFF, fichierImage+".c.png", "-composite",
 		"-modulate", "100,500", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red",
 		"(", "+clone", "-evaluate", "set", "0", ")", "-metric", "AE", "-compare", "-format", "%[distortion]", "info:"])
@@ -217,15 +225,15 @@ def analyse_image(foundQueue,segmentTime,fichierImage):
 	
 	if DEBUG:
 		# appliquer le masque
-		com = ["composite", "-compose", "Multiply", fichierImage+".c.png", MASKOFF, fichierImage+".m.png"]
+		com = [IMGMGK_COMP, "-compose", "Multiply", fichierImage+".c.png", MASKOFF, fichierImage+".m.png"]
 		subprocess.call(com)
 		# appliquer les seuils
-		com = ["convert", fichierImage+".m.png", "-modulate", "100,500", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red", fichierImage+".r.png"]
+		com = [IMGMGK_CONV, fichierImage+".m.png", "-modulate", "100,500", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red", fichierImage+".r.png"]
 		subprocess.call(com)
 	
 	if DEBUG:
 		# appliquer le masque, appliquer les seuils, calculer les pixels
-		tPIXELOFF = subprocess.check_output(["convert",
+		tPIXELOFF = subprocess.check_output([IMGMGK_CONV,
 			"-compose", "Multiply", MASKON, fichierImage+".c.png", "-composite",
 			"-modulate", "100,500",
 			"-fill", "Black", "-fuzz", "25%", "+opaque", "Red",
@@ -237,7 +245,7 @@ def analyse_image(foundQueue,segmentTime,fichierImage):
 	if PIXELON > MINPIXELON:
 		# appliquer le masque, appliquer les seuils, calculer les pixels
 		if not DEBUG:
-			tPIXELOFF = subprocess.check_output(["convert",
+			tPIXELOFF = subprocess.check_output([IMGMGK_CONV,
 				"-compose", "Multiply", MASKON, fichierImage+".c.png", "-composite",
 				"-modulate", "100,500",
 				"-fill", "Black", "-fuzz", "25%", "+opaque", "Red",
@@ -246,12 +254,12 @@ def analyse_image(foundQueue,segmentTime,fichierImage):
 	
 		if DEBUG:
 			# appliquer le masque
-			com = ["composite", "-compose", "Multiply", fichierImage+".c.png", MASKON, fichierImage+".n.png"]
+			com = [IMGMGK_COMP, "-compose", "Multiply", fichierImage+".c.png", MASKON, fichierImage+".n.png"]
 			subprocess.call(com)
 			# appliquer les seuils
-			com = ["convert", fichierImage+".n.png", "-modulate", "100,500", fichierImage+".q.png"]
+			com = [IMGMGK_CONV, fichierImage+".n.png", "-modulate", "100,500", fichierImage+".q.png"]
 			subprocess.call(com)
-			com = ["convert", fichierImage+".q.png", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red", fichierImage+".q.png"]
+			com = [IMGMGK_CONV, fichierImage+".q.png", "-fill", "Black", "-fuzz", "25%", "+opaque", "Red", fichierImage+".q.png"]
 			subprocess.call(com)
 
 		#print("%s: %6d /%6d" % (nomImage, PIXELON, PIXELOFF))
@@ -281,16 +289,16 @@ def analyse_video(segmentTime, syncQueue, foundQueue):
 	#
 	FNULL = open(os.devnull, 'w')
 	#ffmpeg -i "$DIR/stream.mp4" -ss "$segmentTime" -t "$timeStep" -vf fps=5 "$DIR/img/death_$segmentTime_%04d.png"
-	###command = ["ffmpeg", "-i", SOURCE, "-ss", segmentTime, "-t", str(timeStep), "-vf", "fps="+str(fps), DIR+"/img/death_"+p_segmentTime+"_%04d.jpg"]
+	###command = [FFMPEG_EXE, "-i", SOURCE, "-ss", segmentTime, "-t", str(timeStep), "-vf", "fps="+str(fps), DIR+"/img/death_"+p_segmentTime+"_%04d.jpg"]
 	###subprocess.call(command, stdout=FNULL, stderr=FNULL)
 
 	# on découpe la section de la vidéo correspondant (sans réencodage, sans le son)
 	# -ss AVANT le -i change la façon dont ça marche (fast seek avant, lent après)
-	command = ["ffmpeg", "-y", "-ss", t_segmentTime, "-i", SOURCE, "-c", "copy", "-an", "-t", str(timeStep), DIRVID+"stream-"+p_segmentTime+vid_ext]
+	command = [FFMPEG_EXE, "-y", "-ss", t_segmentTime, "-i", SOURCE, "-c", "copy", "-an", "-t", str(timeStep), DIRVID+"stream-"+p_segmentTime+vid_ext]
 	subprocess.call(command, stdout=FNULL, stderr=FNULL)
 	
 	# on crée les images dans le dossier img en les taggant avec segmentTime
-	command = ["ffmpeg", "-y", "-i", DIRVID+"stream-"+p_segmentTime+vid_ext, "-vf", "fps="+str(FPS), "-q:v", "1", DIRIMG+"death_"+p_segmentTime+"_%04d."+IMGEXT]
+	command = [FFMPEG_EXE, "-y", "-i", DIRVID+"stream-"+p_segmentTime+vid_ext, "-vf", "fps="+str(FPS), "-q:v", "1", DIRIMG+"death_"+p_segmentTime+"_%04d."+IMGEXT]
 	subprocess.call(command, stdout=FNULL, stderr=FNULL)
 	
 	##temps_ffmpeg = "%0.2f" % (time.time() - temps_debut)
@@ -335,7 +343,7 @@ def analyse_video(segmentTime, syncQueue, foundQueue):
 #####################################################################
 
 def videoLength():
-	bytes = subprocess.check_output(["ffprobe", "-i", SOURCE, "-show_format", "-v", "quiet"])
+	bytes = subprocess.check_output([FFMPEG_PROBE, "-i", SOURCE, "-show_format", "-v", "quiet"])
 	data = str(bytes,'utf-8')
 	match = re.search(r"duration=(\d+\.\d*)",data)
 	duration = float(match.group(1))
