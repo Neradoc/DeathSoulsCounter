@@ -18,7 +18,7 @@ if(isset($_REQUEST['screen'])) {
 	if(count($files) == 0) {
 		print("");
 	} else {
-		natsort($files);
+		natcasesort($files);
 		print(end($files));
 	}
 	exit();
