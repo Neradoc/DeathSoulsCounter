@@ -3,7 +3,6 @@
 setlocale(LC_ALL,"fr_FR.utf8");
 include("mini.php");
 
-if(!isset($TARGET_DIR)) $TARGET_DIR = dirname($_SERVER['SCRIPT_FILENAME']);
 if(!isset($TARGET_URL)) $TARGET_URL = "";
 if(!isset($DISP_PHP)) $DISP_PHP = false;
 if(!isset($DISP_HTML)) $DISP_HTML = false;
@@ -12,7 +11,16 @@ if(!isset($TRANSFORME_NOMS)) $TRANSFORME_NOMS = false;
 if(!isset($REMOVE_PREFIX)) $REMOVE_PREFIX = false;
 if(!isset($EBOOKS)) $EBOOKS = true;
 if(!isset($TITRE)) $TITRE = $_SERVER["REQUEST_URI"];
-$files = glob(preg_replace("`//+`","/",$TARGET_DIR."/*"));
+if(!isset($TARGET_DIRS) && !is_array($TARGET_DIRS)) {
+	if(!isset($TARGET_DIR)) {
+		$TARGET_DIR = dirname($_SERVER['SCRIPT_FILENAME']);
+	}
+	$TARGET_DIRS = [$TARGET_DIR];
+}
+$files = array();
+foreach($TARGET_DIRS as $target_dir) {
+	$files = array_merge($files,glob(preg_replace("`//+`","/",$target_dir."/*")));
+}
 
 // CONFIG taille des miniatures
 $mini_size = "180";
@@ -75,7 +83,7 @@ function baseUrl() {
 ?>
 <html lang="fr">
 <head>
-	<title><?php echo $TITRE ?></title>
+	<title><?=$TITRE ?></title>
 	<meta http-equiv="content-type" content="text/html; charset=utf-8">
 	<script src="jq/v1.js" type="text/javascript" language="javascript"></script>
 	<link rel="stylesheet" href="jq/jsbox/jsbox.css" />
@@ -122,8 +130,8 @@ function baseUrl() {
 	</script>
 	<style type="text/css">
 		.mini {
-			 width:<?php echo $mini_size; ?>px;
-			 height:<?php echo $mini_size; ?>px;
+			 width:<?=$mini_size; ?>px;
+			 height:<?=$mini_size; ?>px;
 		}
 		td {
 			padding: 2px 5px;
@@ -132,8 +140,8 @@ function baseUrl() {
 		}
 		td.col_mini {
 			padding: 0px 8px 16px;
-			min-width:<?php echo $mini_size; ?>px;
-			max-height:<?php echo $mini_size; ?>px;
+			min-width:<?=$mini_size; ?>px;
+			max-height:<?=$mini_size; ?>px;
 			text-align:center;
 			vertical-align:middle;
 		}
@@ -147,7 +155,9 @@ function baseUrl() {
 ob_start();
 $i = 0;
 $ncase = 0;
-rsort($files);
+usort($files, function($lv,$rv) {
+	return strnatcasecmp(basename($rv),basename($lv));
+});
 foreach($files as $file):
 	$i++;
 	$href = str_replace(__DIR__."/","",$file);
@@ -171,8 +181,10 @@ foreach($files as $file):
 	if($TRANSFORME_NOMS) {
 		$title = preg_replace('/\.(jpg|png|gif|jpeg)$/i','',$title);
 		$title = preg_replace('/[-_]/',' ',$title);
-		$dd = preg_replace('/[^a-z0-9]/i','',basename($TARGET_DIR));
-		$title = preg_replace('/^'.$dd.' /i','',$title);
+		$dirn = basename(dirname($href));
+		if($dirn) {
+			$title = preg_replace('/^'.$dirn.' /i','',$title);
+		}
 		if($REMOVE_PREFIX) {
 			$REMOVE_PREFIX = preg_replace('/[^a-z0-9]/i','',$REMOVE_PREFIX);
 			$title = preg_replace('/^'.$REMOVE_PREFIX.' /i','',$title);
@@ -189,8 +201,8 @@ foreach($files as $file):
 	<tr>
 	<?php endif; ?>
 		<td class="col1 col_mini">
-			<a id="a_num_<?php echo $i ?>" href="<?php echo $href ?>" class="navigue" rel="galerie" title="<?php echo $href ?>"><img class="mini notini" src="img/gris.png" data-link="<?php echo $img ?>" /></a><br/>
-			<a class="lien_titre" data-num="<?php echo $i ?>" href="<?php echo $href ?>" onclick="$('#a_num_'+$(this).data('num')).click(); return false;"><?php echo $title ?></a>
+			<a id="a_num_<?=$i ?>" href="<?=$href ?>" class="navigue" rel="galerie" title="<?=$href ?> (<?=$ncase+1 ?>)"><img class="mini notini" src="img/gris.png" data-link="<?=$img ?>" /></a><br/>
+			<a class="lien_titre" data-num="<?=$i ?>" href="<?=$href ?>" onclick="$('#a_num_'+$(this).data('num')).click(); return false;"><?=$title ?> (<?=$ncase+1 ?>)</a>
 		</td>
 	<?php if($ncase %5 == 4): ?>
 	</tr>
@@ -202,7 +214,7 @@ foreach($files as $file):
 endforeach;
 $la_liste = ob_get_clean();
 ?>
-<h1><?php echo $TITRE ?></h1>
+<h1><?=$TITRE ?></h1>
 <div>(<?=$ncase?> éléments)</div>
 <!-- <div><a href="..">remonter</a></div> -->
 <table>
