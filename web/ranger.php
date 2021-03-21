@@ -1,18 +1,22 @@
-<?php
+<pre><?php
 # aller chercher les fichiers dans compteur
 # convertir le format des noms si nécessaire
 # déplacer dans deaths
 $images = glob("compteur/death_*.jpg");
 
 for($images as $image) {
+	$nom = basename($image);
 	if(preg_match('/(death_.*_)(\d+\.\d)\.jpg/',$m)) {
 		$heures = floor($m[2]/60/60);
 		$minutes = floor($m[2]/60 % 60);
 		$secondes = floor($m[2]) % 60;
 		$stamp=sprintf("%dh%02dm%02ds", $heures, $minutes, $secondes);
 		$nouveau = $m[1].$stamp.".jpg";
-		print("mv $image $nouveau\n");
+	} else {
+		$nouveau = $nom;
 	}
+	# rename($image,"deaths/".$nouveau);
+	print("rename(\"$image\",\"deaths/$nouveau\");\n");
 }
 
 /*

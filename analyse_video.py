@@ -29,8 +29,8 @@ FFMPEG_PROBE = "ffprobe"
 IMGMGK_COMP = "composite"
 IMGMGK_CONV = "convert"
 
-# numéro de la vidéo (incrémenter à chaque fois)
-NUMVID = "xx"
+# numéro de la vidéo/session (incrémenter pour les avoir dans l'ordre)
+NUMVID = str(int(1000*time.time()))
 # formats des noms des fichiers (la partie après le num de la vidéo)
 FORMATNOM = ""
 # format des images utilisées pour la capture (jpg)
@@ -92,7 +92,7 @@ def safeInt(input,defo=0):
 #####################################################################
 
 def init_dirs():
-	global DIRFOUND,DIRTRUE,DIRIMG,DIRVID,SOURCE
+	global DIR,DIRFOUND,DIRTRUE,DIRIMG,DIRVID,SOURCE
 	DIRFOUND = DIR+"found/"
 	DIRTRUE = DIR+"deaths/"
 	DIRIMG = DIR+"img/"
@@ -458,7 +458,7 @@ if __name__ == '__main__':
 	# stream parse le stream
 	# video s'arrête à la fin de la video
 	parser = argparse.ArgumentParser()
-	parser.add_argument('--numsession', '-n', help='Numéro de la session (numéro de la VOD)', required=True)
+	parser.add_argument('--numsession', '-n', help='Numéro de la session (numéro de la VOD)') # required=True
 	parser.add_argument('--images', '-i', action='store_true', help='Analyser les images au lieu de la video')
 	parser.add_argument('--video', '-v', action='store_true', help='Analyser une vidéo fixe plutôt que le stream')
 	parser.add_argument('--upload', '-u', action='store_true', help='Uploader les vidéos sur le site')
